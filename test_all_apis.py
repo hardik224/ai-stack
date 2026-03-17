@@ -44,9 +44,33 @@ class ApiTestRunner:
         self.file_id: str | None = None
         self.job_id: str | None = None
         self.upload_job_ids: list[str] = []
+        self.verbose_http = os.getenv('VERBOSE_HTTP', '1').strip().lower() not in {'0', 'false', 'no'}
 
     def section(self, title: str) -> None:
         print(f"\n=== {title} ===", flush=True)
+
+    def log_http_request(self, method: str, url: str, *, payload: Any | None = None, headers: dict[str, str] | None = None) -> None:
+        if not self.verbose_http:
+            return
+        print(f"[HTTP] REQUEST {method} {url}", flush=True)
+        if headers:
+            print(f"[HTTP] REQUEST HEADERS {self.preview(self.sanitize_headers(headers), max_len=400)}", flush=True)
+        if payload is not None:
+            print(f"[HTTP] REQUEST BODY {self.preview(payload, max_len=600)}", flush=True)
+
+    def log_http_response(self, method: str, url: str, status_code: int, body: Any) -> None:
+        if not self.verbose_http:
+            return
+        print(f"[HTTP] RESPONSE {method} {url} -> {status_code}", flush=True)
+        print(f"[HTTP] RESPONSE BODY {self.preview(body, max_len=600)}", flush=True)
+
+    @staticmethod
+    def sanitize_headers(headers: dict[str, str]) -> dict[str, str]:
+        sanitized = dict(headers)
+        authorization = sanitized.get('Authorization')
+        if authorization:
+            sanitized['Authorization'] = 'Bearer ***redacted***'
+        return sanitized
 
     def pass_(self, name: str, detail: str) -> None:
         self.results.append(Result('PASS', name, detail))
@@ -82,6 +106,7 @@ class ApiTestRunner:
             data = json.dumps(json_body).encode('utf-8')
             headers['Content-Type'] = 'application/json'
 
+        self.log_http_request(method.upper(), url, payload=json_body, headers=headers)
         req = request.Request(url, data=data, headers=headers, method=method.upper())
         return self._perform(req, expected_status)
 
@@ -118,6 +143,18 @@ class ApiTestRunner:
             'Authorization': f'Bearer {token}',
             'Content-Type': f'multipart/form-data; boundary={boundary}',
         }
+        multipart_payload = {
+            'fields': fields,
+            'files': {
+                name: {
+                    'filename': file_info[0],
+                    'content_type': file_info[2],
+                    'size_bytes': len(file_info[1]),
+                }
+                for name, file_info in files.items()
+            },
+        }
+        self.log_http_request('POST', f"{BASE_URL}{path}", payload=multipart_payload, headers=headers)
         req = request.Request(f"{BASE_URL}{path}", data=bytes(body), headers=headers, method='POST')
         return self._perform(req, expected_status)
 
@@ -141,6 +178,7 @@ class ApiTestRunner:
             raise RuntimeError(f"Request failed before HTTP response: {exc}") from exc
 
         parsed = self._parse_body(raw, headers)
+        self.log_http_response(req.get_method(), req.full_url, status_code, parsed)
         if expected and status_code not in expected:
             raise RuntimeError(f"Expected {expected}, got {status_code}, body={self.preview(parsed)}")
         return status_code, parsed, headers
