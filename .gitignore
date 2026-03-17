@@ -9,12 +9,12 @@ __pycache__/
 *.pyd
 
 # Logs
-logs/
+logs/*
 *.log
 
 # Data directories
-data/
-backups/
+data/*
+backups/*
 
 # Redis
 *.rdb
@@ -36,3 +36,6 @@ Thumbs.db
 *.tmp
 *.swp
 
+!data/.gitkeep
+!logs/.gitkeep
+!backups/.gitkeep
