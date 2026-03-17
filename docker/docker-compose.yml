@@ -1,0 +1,144 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ai-stack-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --port
+      - "6380"
+      - --appendonly
+      - "yes"
+      - --save
+      - "60"
+      - "1000"
+    volumes:
+      - /home/evital/ai-stack-2/data/redis:/data
+    networks:
+      - ai-stack-network
+    ports:
+      - "6380:6380"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6380", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: ai-stack-minio
+    restart: unless-stopped
+    env_file:
+      - /home/evital/ai-stack-2/docker/.env
+    command: server /data --console-address ":9001"
+    volumes:
+      - /home/evital/ai-stack-2/data/minio:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    networks:
+      - ai-stack-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ai-stack-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - /home/evital/ai-stack-2/data/qdrant:/qdrant/storage
+    networks:
+      - ai-stack-network
+
+  api:
+    build:
+      context: /home/evital/ai-stack-2/apps/api
+      dockerfile: Dockerfile
+    container_name: ai-stack-api
+    restart: unless-stopped
+    env_file:
+      - /home/evital/ai-stack-2/docker/.env
+    depends_on:
+      - redis
+      - qdrant
+      - minio
+    environment:
+      APP_ENV: development
+      API_HOST: 0.0.0.0
+      API_PORT: 2000
+      REDIS_URL: redis://redis:6380/0
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      DATABASE_URL: ${DATABASE_URL}
+      INGESTION_QUEUE_NAME: ${INGESTION_QUEUE_NAME}
+      AUTH_SESSION_TTL_HOURS: ${AUTH_SESSION_TTL_HOURS}
+      MINIO_DOCUMENTS_BUCKET: ${MINIO_DOCUMENTS_BUCKET}
+      MINIO_SECURE: ${MINIO_SECURE}
+      MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES}
+      DEFAULT_LIST_LIMIT: ${DEFAULT_LIST_LIMIT}
+      MAX_LIST_LIMIT: ${MAX_LIST_LIMIT}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "2000:2000"
+    volumes:
+      - /home/evital/ai-stack-2/logs/api:/logs
+    networks:
+      - ai-stack-network
+
+  worker:
+    build:
+      context: /home/evital/ai-stack-2/apps/worker
+      dockerfile: Dockerfile
+    container_name: ai-stack-worker
+    restart: unless-stopped
+    env_file:
+      - /home/evital/ai-stack-2/docker/.env
+    depends_on:
+      - redis
+      - qdrant
+      - minio
+    environment:
+      APP_ENV: development
+      REDIS_URL: redis://redis:6380/0
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: http://minio:9000
+      DATABASE_URL: ${DATABASE_URL}
+      INGESTION_QUEUE_NAME: ${INGESTION_QUEUE_NAME}
+      WORKER_ID: ${WORKER_ID}
+      WORKER_BLOCK_TIMEOUT_SECONDS: ${WORKER_BLOCK_TIMEOUT_SECONDS}
+      WORKER_SIMULATION_DELAY_SECONDS: ${WORKER_SIMULATION_DELAY_SECONDS}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /home/evital/ai-stack-2/logs/worker:/logs
+    networks:
+      - ai-stack-network
+
+  web:
+    build:
+      context: /home/evital/ai-stack-2/apps/web
+      dockerfile: Dockerfile
+    container_name: ai-stack-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "2001:80"
+    volumes:
+      - /home/evital/ai-stack-2/logs/web:/var/log/nginx
+    networks:
+      - ai-stack-network
+
+networks:
+  ai-stack-network:
+    external: true
