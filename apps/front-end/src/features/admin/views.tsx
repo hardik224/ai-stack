@@ -154,7 +154,7 @@ function DashboardView() {
       <SectionHeading eyebrow="Overview" title="Platform command center" description="Track ingestion health, user growth, chat volume, and operational pressure at a glance." />
       <QueryBoundary isLoading={dashboard.isLoading || uploadSummary.isLoading || jobSummary.isLoading || processSummary.isLoading} error={dashboard.error || uploadSummary.error || jobSummary.error || processSummary.error} onRetry={() => { dashboard.refetch(); uploadSummary.refetch(); jobSummary.refetch(); processSummary.refetch(); }}>
         <StatGrid items={[
-          { title: 'Users', value: formatNumber(dashboard.data?.total_users), helper: `${dashboard.data?.admin_users ?? 0} admins · ${dashboard.data?.internal_users ?? 0} internal`, icon: <Users className="size-5" /> },
+          { title: 'Users', value: formatNumber(dashboard.data?.total_users), helper: `${dashboard.data?.admin_users ?? 0} admins | ${dashboard.data?.internal_users ?? 0} internal`, icon: <Users className="size-5" /> },
           { title: 'Knowledge Files', value: formatNumber(dashboard.data?.total_files), helper: formatBytes(dashboard.data?.total_uploaded_bytes), icon: <HardDriveDownload className="size-5" /> },
           { title: 'Jobs', value: formatNumber(dashboard.data?.total_jobs), helper: `${dashboard.data?.queue_depth ?? 0} waiting in queue`, icon: <Boxes className="size-5" /> },
           { title: 'Chats', value: formatNumber(dashboard.data?.total_chat_sessions), helper: `${dashboard.data?.total_chat_messages ?? 0} messages tracked`, icon: <Bot className="size-5" /> },
@@ -246,7 +246,7 @@ function UsersView() {
                     <tr key={user.id} className="transition hover:bg-white/5">
                       <td className="px-5 py-4"><p className="font-medium text-white">{user.full_name || 'Unnamed user'}</p><p className="mt-1 text-xs text-slate-500">{user.email}</p></td>
                       <td className="px-5 py-4"><StatusBadge value={user.role} /></td>
-                      <td className="px-5 py-4 text-slate-300">{formatNumber(user.file_count)} files · {formatBytes(user.total_uploaded_bytes)}</td>
+                      <td className="px-5 py-4 text-slate-300">{formatNumber(user.file_count)} files | {formatBytes(user.total_uploaded_bytes)}</td>
                       <td className="px-5 py-4 text-slate-300">{formatNumber(user.job_count)}</td>
                       <td className="px-5 py-4 text-slate-300">{formatNumber(user.chat_session_count)}</td>
                       <td className="px-5 py-4 text-slate-400">{formatDateTime(user.last_login_at)}</td>
@@ -277,7 +277,7 @@ function UserDetailView({ id }: { id: string }) {
           <>
             <StatGrid items={[
               { title: 'Uploads', value: formatNumber(query.data.file_count), helper: formatBytes(query.data.total_uploaded_bytes), icon: <HardDriveDownload className="size-5" /> },
-              { title: 'Jobs', value: formatNumber(query.data.job_count), helper: `${query.data.completed_jobs ?? 0} completed · ${query.data.failed_jobs ?? 0} failed`, icon: <Boxes className="size-5" /> },
+              { title: 'Jobs', value: formatNumber(query.data.job_count), helper: `${query.data.completed_jobs ?? 0} completed | ${query.data.failed_jobs ?? 0} failed`, icon: <Boxes className="size-5" /> },
               { title: 'Chats', value: formatNumber(query.data.chat_session_count), helper: `${query.data.message_count} total messages`, icon: <MessageSquareText className="size-5" /> },
               { title: 'Role', value: titleize(query.data.role), helper: query.data.status, icon: <ShieldCheck className="size-5" /> },
             ]} />
@@ -555,7 +555,7 @@ function ActivityView() {
                     <div>
                       <p className="text-xs uppercase tracking-[0.3em] text-slate-500">{titleize(item.activity_type)}</p>
                       <p className="mt-3 text-lg font-semibold text-white">{item.description}</p>
-                      <p className="mt-2 text-sm text-slate-400">Actor: {item.actor_email || item.actor_user_id || 'System'} · Target: {item.target_type || 'n/a'}</p>
+                      <p className="mt-2 text-sm text-slate-400">Actor: {item.actor_email || item.actor_user_id || 'System'} | Target: {item.target_type || 'n/a'}</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <StatusBadge value={item.visibility} />
@@ -593,7 +593,7 @@ function ChatsView() {
                   <tr key={session.id} className="transition hover:bg-white/5">
                     <td className="px-5 py-4"><p className="font-medium text-white">{session.title}</p><p className="mt-1 text-xs text-slate-500">{session.id}</p></td>
                     <td className="px-5 py-4 text-slate-300">{session.user_full_name || session.user_email}</td>
-                    <td className="px-5 py-4 text-slate-300">{formatNumber(session.message_count)} messages · {formatNumber(session.citation_count)} citations</td>
+                    <td className="px-5 py-4 text-slate-300">{formatNumber(session.message_count)} messages | {formatNumber(session.citation_count)} citations</td>
                     <td className="px-5 py-4"><StatusBadge value={session.latest_assistant_status || 'unknown'} /></td>
                     <td className="px-5 py-4 text-slate-400">{formatDateTime(session.updated_at)}</td>
                     <td className="px-5 py-4"><Link href={`/chats/${session.id}`} className="inline-flex items-center gap-2 text-cyan-200 hover:text-white">Open <ArrowRight className="size-4" /></Link></td>
@@ -649,8 +649,8 @@ function ChatDetailView({ id }: { id: string }) {
                           {message.sources.map((source) => (
                             <div key={`${message.id}-${source.citation_label}-${source.chunk_id}`} className="rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">
                               <span className="font-semibold text-cyan-200">[{source.citation_label}]</span> {source.file_name || source.file_id}
-                              {source.page_number ? ` · page ${source.page_number}` : ''}
-                              {source.row_number ? ` · row ${source.row_number}` : ''}
+                              {source.page_number ? ` | page ${source.page_number}` : ''}
+                              {source.row_number ? ` | row ${source.row_number}` : ''}
                             </div>
                           ))}
                         </div>
