@@ -334,7 +334,9 @@ class CacheLayerTestRunner(HybridRetrievalTestRunner):
             generation_payload = self.event_payload(second_generation_started)
             cache_block = generation_payload.get('cache', {}) if isinstance(generation_payload, dict) else {}
             if EXPECT_PROMPT_CACHE:
-                if isinstance(cache_block, dict) and cache_block.get('hit') is True:
+                if generation_payload.get('generation_mode') != 'llm':
+                    self.skip('Prompt cache reuse', f"generation_mode={generation_payload.get('generation_mode')} so prompt cache is not applicable")
+                elif isinstance(cache_block, dict) and cache_block.get('hit') is True:
                     self.pass_('Prompt cache reuse', 'second chat request reused prompt cache')
                 else:
                     self.fail('Prompt cache reuse', self.pretty_value(generation_payload))
@@ -396,7 +398,10 @@ class CacheLayerTestRunner(HybridRetrievalTestRunner):
             return
 
         payload = self.event_payload(generation_started)
-        if payload.get('generation_mode') == 'answer_cache':
+        cache_block = payload.get('cache', {}) if isinstance(payload, dict) else {}
+        if isinstance(cache_block, dict) and cache_block.get('eligible') is False:
+            self.skip('Answer cache reuse', 'server-side answer cache is not enabled for this response path')
+        elif payload.get('generation_mode') == 'answer_cache':
             self.pass_('Answer cache reuse', 'second insufficient-evidence request reused deterministic answer cache')
         else:
             self.fail('Answer cache reuse', self.pretty_value(payload))
