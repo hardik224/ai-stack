@@ -50,6 +50,12 @@ class Settings:
     chat_default_max_context_chars: int
     chat_retrieval_cache_ttl_seconds: int
     chat_embedding_cache_ttl_seconds: int
+    cache_embedding_ttl_seconds: int
+    cache_retrieval_ttl_seconds: int
+    cache_prompt_enabled: bool
+    cache_prompt_ttl_seconds: int
+    cache_answer_enabled: bool
+    cache_answer_ttl_seconds: int
     chat_min_grounding_items: int
     chat_min_grounding_score: float
     chat_min_grounding_lexical_overlap: float
@@ -67,6 +73,8 @@ class Settings:
 def get_settings() -> Settings:
     reasoning_effort = os.getenv('LLM_REASONING_EFFORT', '').strip() or None
     llm_provider = os.getenv('LLM_PROVIDER', os.getenv('LLM_BACKEND', 'openai_compatible')).strip() or 'openai_compatible'
+    cache_embedding_ttl_seconds = int(os.getenv('CACHE_EMBEDDING_TTL_SECONDS', os.getenv('CHAT_EMBEDDING_CACHE_TTL_SECONDS', '300')))
+    cache_retrieval_ttl_seconds = int(os.getenv('CACHE_RETRIEVAL_TTL_SECONDS', os.getenv('CHAT_RETRIEVAL_CACHE_TTL_SECONDS', '60')))
     return Settings(
         app_env=os.getenv('APP_ENV', 'development'),
         api_host=os.getenv('API_HOST', '0.0.0.0'),
@@ -105,8 +113,14 @@ def get_settings() -> Settings:
         chat_default_score_threshold=float(os.getenv('CHAT_DEFAULT_SCORE_THRESHOLD', '0.25')),
         chat_default_max_context_chunks=int(os.getenv('CHAT_DEFAULT_MAX_CONTEXT_CHUNKS', '6')),
         chat_default_max_context_chars=int(os.getenv('CHAT_DEFAULT_MAX_CONTEXT_CHARS', '12000')),
-        chat_retrieval_cache_ttl_seconds=int(os.getenv('CHAT_RETRIEVAL_CACHE_TTL_SECONDS', '60')),
-        chat_embedding_cache_ttl_seconds=int(os.getenv('CHAT_EMBEDDING_CACHE_TTL_SECONDS', '300')),
+        chat_retrieval_cache_ttl_seconds=cache_retrieval_ttl_seconds,
+        chat_embedding_cache_ttl_seconds=cache_embedding_ttl_seconds,
+        cache_embedding_ttl_seconds=cache_embedding_ttl_seconds,
+        cache_retrieval_ttl_seconds=cache_retrieval_ttl_seconds,
+        cache_prompt_enabled=_as_bool(os.getenv('CACHE_PROMPT_ENABLED'), default=False),
+        cache_prompt_ttl_seconds=int(os.getenv('CACHE_PROMPT_TTL_SECONDS', '60')),
+        cache_answer_enabled=_as_bool(os.getenv('CACHE_ANSWER_ENABLED'), default=False),
+        cache_answer_ttl_seconds=int(os.getenv('CACHE_ANSWER_TTL_SECONDS', '120')),
         chat_min_grounding_items=int(os.getenv('CHAT_MIN_GROUNDING_ITEMS', '1')),
         chat_min_grounding_score=float(os.getenv('CHAT_MIN_GROUNDING_SCORE', '0.38')),
         chat_min_grounding_lexical_overlap=float(os.getenv('CHAT_MIN_GROUNDING_LEXICAL_OVERLAP', '0.08')),

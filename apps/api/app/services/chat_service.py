@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from app.config.settings import get_settings
+from app.library import cache
 from app.library.security import validate_limit_offset
 from app.library.sse import format_sse_comment, format_sse_event
 from app.models import chat_model
@@ -211,6 +212,11 @@ def _chat_event_stream(*, payload, current_identity: dict):
         citations = _serialize_citations(retrieval.get('items', []))
         evidence_assessment = retrieval.get('evidence_assessment', {})
         answer_citations = citations if evidence_assessment.get('is_sufficient', False) else []
+        cache_state = {
+            'retrieval': retrieval.get('cache', {}),
+            'prompt': {'hit': False, 'lookup_ms': 0.0, 'ttl_seconds': None},
+            'answer': {'hit': False, 'lookup_ms': 0.0, 'ttl_seconds': None, 'eligible': False},
+        }
         yield format_sse_event(
             'retrieval.completed',
             {
@@ -225,6 +231,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 'timings': retrieval['timings'],
                 'citations': citations,
                 'evidence_assessment': evidence_assessment,
+                'cache': retrieval.get('cache', {}),
             },
             session_id=str(session_id),
             message_id=str(assistant_message_id),
@@ -239,28 +246,103 @@ def _chat_event_stream(*, payload, current_identity: dict):
         answer_citations = citations if evidence_assessment.get('is_sufficient', False) else []
         if not retrieval.get('items') or not evidence_assessment.get('is_sufficient', False):
             generation_mode = 'insufficient_evidence'
-            yield format_sse_event(
-                'generation.started',
-                {
-                    'mode': mode,
-                    'generation_mode': generation_mode,
-                    'backend': 'deterministic',
-                    'model': None,
-                },
-                session_id=str(session_id),
-                message_id=str(assistant_message_id),
-            )
-            fallback_answer = build_insufficient_evidence_markdown(question=payload.message, mode=mode)
-            generation_start = time.perf_counter()
-            for delta in _chunk_text(fallback_answer):
-                answer_parts.append(delta)
+            answer_signature = {
+                'mode': mode,
+                'provider': 'deterministic',
+                'model': None,
+                'identity_scope': _build_identity_scope(current_identity),
+                'normalized_query': retrieval['normalized_query'],
+                'expanded_query': retrieval['expanded_query'],
+                'retrieval_signature': retrieval.get('retrieval_signature'),
+                'generation_mode': generation_mode,
+            }
+            version_scope = retrieval.get('cache_version_scope', {})
+            if settings.cache_answer_enabled:
+                cached_answer, answer_meta = cache.get_cached_answer(signature=answer_signature, version_scope=version_scope)
+                cache_state['answer'] = {
+                    **answer_meta,
+                    'ttl_seconds': cache.get_ttl(answer_meta['key']),
+                    'eligible': True,
+                }
+                if cached_answer:
+                    generation_mode = 'answer_cache'
+                    answer_citations = cached_answer.get('citations', [])
+                    yield format_sse_event(
+                        'generation.started',
+                        {
+                            'mode': mode,
+                            'generation_mode': generation_mode,
+                            'backend': 'redis_cache',
+                            'model': None,
+                            'cache': cache_state['answer'],
+                        },
+                        session_id=str(session_id),
+                        message_id=str(assistant_message_id),
+                    )
+                    generation_start = time.perf_counter()
+                    for delta in _chunk_text(cached_answer.get('content', '')):
+                        answer_parts.append(delta)
+                        yield format_sse_event(
+                            'content.delta',
+                            {'delta': delta},
+                            session_id=str(session_id),
+                            message_id=str(assistant_message_id),
+                        )
+                    generation_ms = round((time.perf_counter() - generation_start) * 1000, 2)
+                else:
+                    yield format_sse_event(
+                        'generation.started',
+                        {
+                            'mode': mode,
+                            'generation_mode': generation_mode,
+                            'backend': 'deterministic',
+                            'model': None,
+                            'cache': cache_state['answer'],
+                        },
+                        session_id=str(session_id),
+                        message_id=str(assistant_message_id),
+                    )
+                    fallback_answer = build_insufficient_evidence_markdown(question=payload.message, mode=mode)
+                    generation_start = time.perf_counter()
+                    for delta in _chunk_text(fallback_answer):
+                        answer_parts.append(delta)
+                        yield format_sse_event(
+                            'content.delta',
+                            {'delta': delta},
+                            session_id=str(session_id),
+                            message_id=str(assistant_message_id),
+                        )
+                    generation_ms = round((time.perf_counter() - generation_start) * 1000, 2)
+                    cache.set_cached_answer(
+                        signature=answer_signature,
+                        version_scope=version_scope,
+                        payload={'content': ''.join(answer_parts).strip(), 'citations': answer_citations, 'generation_mode': 'insufficient_evidence'},
+                    )
+                    cache_state['answer']['ttl_seconds'] = settings.cache_answer_ttl_seconds
+            else:
                 yield format_sse_event(
-                    'content.delta',
-                    {'delta': delta},
+                    'generation.started',
+                    {
+                        'mode': mode,
+                        'generation_mode': generation_mode,
+                        'backend': 'deterministic',
+                        'model': None,
+                        'cache': cache_state['answer'],
+                    },
                     session_id=str(session_id),
                     message_id=str(assistant_message_id),
                 )
-            generation_ms = round((time.perf_counter() - generation_start) * 1000, 2)
+                fallback_answer = build_insufficient_evidence_markdown(question=payload.message, mode=mode)
+                generation_start = time.perf_counter()
+                for delta in _chunk_text(fallback_answer):
+                    answer_parts.append(delta)
+                    yield format_sse_event(
+                        'content.delta',
+                        {'delta': delta},
+                        session_id=str(session_id),
+                        message_id=str(assistant_message_id),
+                    )
+                generation_ms = round((time.perf_counter() - generation_start) * 1000, 2)
         else:
             history_rows = chat_model.list_recent_messages_for_session(session_id, settings.chat_history_turns * 2 + 6)
             history_messages = []
@@ -272,14 +354,44 @@ def _chat_event_stream(*, payload, current_identity: dict):
                     continue
                 history_messages.append(message)
 
-            prompt_started = time.perf_counter()
-            prompt_messages = build_chat_prompt(
-                question=payload.message,
-                context_items=retrieval['items'],
-                history_messages=history_messages,
-                mode=mode,
-            )
-            prompt_build_ms = round((time.perf_counter() - prompt_started) * 1000, 2)
+            prompt_signature = {
+                'mode': mode,
+                'question': payload.message,
+                'retrieval_signature': retrieval.get('retrieval_signature'),
+                'history_hash': cache.build_hash([
+                    {'role': message['role'], 'content': message['content'], 'updated_at': str(message.get('updated_at'))}
+                    for message in history_messages
+                ]),
+            }
+            prompt_messages = None
+            if settings.cache_prompt_enabled:
+                prompt_cached, prompt_meta = cache.get_cached_prompt(
+                    signature=prompt_signature,
+                    version_scope=retrieval.get('cache_version_scope', {}),
+                )
+                cache_state['prompt'] = {
+                    **prompt_meta,
+                    'ttl_seconds': cache.get_ttl(prompt_meta['key']),
+                }
+                prompt_build_ms = prompt_meta['lookup_ms']
+                if prompt_cached:
+                    prompt_messages = prompt_cached
+            if prompt_messages is None:
+                prompt_started = time.perf_counter()
+                prompt_messages = build_chat_prompt(
+                    question=payload.message,
+                    context_items=retrieval['items'],
+                    history_messages=history_messages,
+                    mode=mode,
+                )
+                prompt_build_ms = round(prompt_build_ms + ((time.perf_counter() - prompt_started) * 1000), 2)
+                cache.set_cached_prompt(
+                    signature=prompt_signature,
+                    version_scope=retrieval.get('cache_version_scope', {}),
+                    payload=prompt_messages,
+                )
+                if settings.cache_prompt_enabled:
+                    cache_state['prompt']['ttl_seconds'] = settings.cache_prompt_ttl_seconds
 
             yield format_sse_event(
                 'generation.started',
@@ -288,6 +400,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
                     'generation_mode': generation_mode,
                     'backend': settings.llm_provider,
                     'model': settings.llm_model,
+                    'cache': cache_state['prompt'],
                 },
                 session_id=str(session_id),
                 message_id=str(assistant_message_id),
@@ -352,9 +465,12 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 'selected_count': retrieval['selected_count'],
                 'dedupe_removed_count': retrieval['dedupe_removed_count'],
                 'cache_hit': retrieval['cache_hit'],
+                'cache_version_scope': retrieval.get('cache_version_scope', {}),
+                'retrieval_signature': retrieval.get('retrieval_signature'),
             },
             'timings': timings,
             'citations': answer_citations,
+            'cache': cache_state,
         }
 
         chat_model.update_chat_message(
@@ -393,6 +509,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 'llm_model': settings.llm_model,
                 'mode': mode,
                 'total_ms': total_ms,
+                'cache': cache_state,
             },
         )
 
@@ -417,6 +534,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 'citation_count': len(answer_citations),
                 'timings': timings,
                 'generation_mode': generation_mode,
+                'cache': cache_state,
             },
             session_id=str(session_id),
             message_id=str(assistant_message_id),
@@ -440,6 +558,15 @@ def _chat_event_stream(*, payload, current_identity: dict):
             message_id=str(assistant_message['id']) if assistant_message else None,
         )
 
+
+
+
+def _build_identity_scope(current_identity: dict) -> dict:
+    return {
+        'auth_type': current_identity.get('auth_type', 'session'),
+        'role': current_identity.get('role'),
+        'subject_id': str(current_identity.get('id')) if current_identity.get('id') else None,
+    }
 
 
 def _get_owned_session(*, session_id: UUID, current_identity: dict) -> dict:

@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from app.config.settings import get_settings
 from app.library.db import close_db_pool, init_db_pool
 from app.library.qdrant import close_qdrant_client, init_qdrant_client
-from app.library.queue import close_redis_client, init_redis_client
+from app.library.redis_client import close_redis_client, init_redis_client
 from app.library.storage import close_storage_client, init_storage_client
 from app.routes import get_routers
 from app.services.llm_service import close_llm_client, init_llm_client

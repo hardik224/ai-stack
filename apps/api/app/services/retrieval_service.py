@@ -1,5 +1,3 @@
-import hashlib
-import json
 import re
 import time
 from collections import Counter
@@ -10,9 +8,9 @@ from fastapi import HTTPException, status
 from qdrant_client import models
 
 from app.config.settings import get_settings
+from app.library import cache
 from app.library.embeddings import embed_query
 from app.library.qdrant import get_qdrant_client
-from app.library.queue import cache_get_json, cache_set_json
 from app.models import chat_model, collection_model, retrieval_model
 from app.services import fusion_service, keyword_service, reranker_service
 
@@ -45,6 +43,10 @@ def retrieve_chunks(
     settings = get_settings()
     total_start = time.perf_counter()
     timings: dict[str, float] = {}
+    cache_info = {
+        'retrieval': {'hit': False, 'lookup_ms': 0.0, 'ttl_seconds': None},
+        'embedding': {'hit': False, 'lookup_ms': 0.0, 'ttl_seconds': None},
+    }
 
     normalized_query = normalize_query(query)
     expanded_query = normalized_query
@@ -55,8 +57,9 @@ def retrieve_chunks(
             history_turns=settings.chat_history_turns,
         )
 
-    if collection_id:
-        collection = collection_model.get_collection(collection_id)
+    effective_collection_id = _resolve_collection_scope(collection_id=collection_id, file_id=file_id)
+    if effective_collection_id:
+        collection = collection_model.get_collection(UUID(str(effective_collection_id)))
         if not collection:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Collection not found.')
 
@@ -76,24 +79,34 @@ def retrieve_chunks(
         'file_id': str(file_id) if file_id else None,
         'source_type': source_type,
     }
-    cache_key = build_retrieval_cache_key(
-        expanded_query=expanded_query,
-        filters=filters,
-        top_k=resolved_top_k,
-        score_threshold=resolved_score_threshold,
-        dedupe=dedupe,
-        enable_vector=enable_vector,
-        enable_keyword=enable_keyword,
-        enable_rerank=resolved_enable_rerank,
-        max_context_chunks=resolved_max_context_chunks,
-        max_context_chars=resolved_max_context_chars,
-    )
-    cached = cache_get_json(cache_key)
+    version_scope = cache.get_retrieval_cache_scope(collection_id=effective_collection_id)
+    retrieval_signature = {
+        'expanded_query': expanded_query,
+        'filters': filters,
+        'top_k': resolved_top_k,
+        'score_threshold': resolved_score_threshold,
+        'dedupe': dedupe,
+        'enable_vector': enable_vector,
+        'enable_keyword': enable_keyword,
+        'enable_rerank': resolved_enable_rerank,
+        'max_context_chunks': resolved_max_context_chunks,
+        'max_context_chars': resolved_max_context_chars,
+    }
+
+    cached, retrieval_cache_meta = cache.get_cached_retrieval(signature=retrieval_signature, version_scope=version_scope)
+    timings['retrieval_cache_lookup_ms'] = retrieval_cache_meta['lookup_ms']
+    cache_info['retrieval'] = {
+        **retrieval_cache_meta,
+        'ttl_seconds': cache.get_ttl(retrieval_cache_meta['key']),
+    }
     if cached:
         cached_timings = dict(cached.get('timings', {}))
+        cached_timings['retrieval_cache_lookup_ms'] = retrieval_cache_meta['lookup_ms']
         cached_timings['total_ms'] = round((time.perf_counter() - total_start) * 1000, 2)
         cached['timings'] = cached_timings
         cached['cache_hit'] = True
+        cached['cache'] = dict(cached.get('cache', {}))
+        cached['cache']['retrieval'] = cache_info['retrieval']
         if 'evidence_assessment' not in cached:
             cached['evidence_assessment'] = assess_evidence(cached.get('items', []))
         if persist_trace:
@@ -120,11 +133,28 @@ def retrieve_chunks(
 
     vector_items: list[dict] = []
     keyword_items: list[dict] = []
-    query_vector: list[float] | None = None
 
     if enable_vector:
+        embedding_cache_payload, embedding_cache_meta = cache.get_cached_embedding(
+            normalized_query=expanded_query,
+            model_name=settings.embedding_model_name,
+        )
+        timings['embedding_cache_lookup_ms'] = embedding_cache_meta['lookup_ms']
+        cache_info['embedding'] = {
+            **embedding_cache_meta,
+            'ttl_seconds': cache.get_ttl(embedding_cache_meta['key']),
+        }
         embedding_start = time.perf_counter()
-        query_vector = get_cached_query_embedding(expanded_query)
+        if embedding_cache_payload is not None:
+            query_vector = [float(value) for value in embedding_cache_payload]
+        else:
+            query_vector = embed_query(expanded_query)
+            cache.set_cached_embedding(
+                normalized_query=expanded_query,
+                model_name=settings.embedding_model_name,
+                vector=query_vector,
+            )
+            cache_info['embedding']['ttl_seconds'] = settings.cache_embedding_ttl_seconds
         timings['query_embedding_ms'] = round((time.perf_counter() - embedding_start) * 1000, 2)
 
         vector_start = time.perf_counter()
@@ -149,6 +179,7 @@ def retrieve_chunks(
             filters=filters,
         )
     else:
+        timings['embedding_cache_lookup_ms'] = 0.0
         timings['query_embedding_ms'] = 0.0
         timings['vector_search_ms'] = 0.0
 
@@ -213,6 +244,9 @@ def retrieve_chunks(
         'filters': filters,
         'timings': timings,
         'cache_hit': False,
+        'cache': cache_info,
+        'cache_version_scope': version_scope,
+        'retrieval_signature': cache.build_hash(retrieval_signature),
         'evidence_assessment': evidence_assessment,
         'paths': {
             'vector_enabled': enable_vector,
@@ -242,7 +276,8 @@ def retrieve_chunks(
     }
     result['timings']['total_ms'] = round((time.perf_counter() - total_start) * 1000, 2)
 
-    cache_set_json(cache_key, result, settings.chat_retrieval_cache_ttl_seconds)
+    cache.set_cached_retrieval(signature=retrieval_signature, version_scope=version_scope, payload=result)
+    result['cache']['retrieval']['ttl_seconds'] = settings.cache_retrieval_ttl_seconds
 
     if persist_trace:
         _persist_retrieval_trace(
@@ -297,21 +332,12 @@ def expand_query_with_history(*, session_id: UUID, normalized_query: str, histor
 
 
 
-def build_retrieval_cache_key(**parts) -> str:
-    digest = hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode('utf-8')).hexdigest()
-    return f'retrieval:{digest}'
-
-
-
-def get_cached_query_embedding(normalized_query: str) -> list[float]:
-    settings = get_settings()
-    cache_key = f"embedding:{settings.embedding_model_name}:{hashlib.sha256(normalized_query.encode('utf-8')).hexdigest()}"
-    cached = cache_get_json(cache_key)
-    if cached:
-        return [float(value) for value in cached]
-    vector = embed_query(normalized_query)
-    cache_set_json(cache_key, vector, settings.chat_embedding_cache_ttl_seconds)
-    return vector
+def _resolve_collection_scope(*, collection_id: UUID | None, file_id: UUID | None) -> str | None:
+    if collection_id:
+        return str(collection_id)
+    if not file_id:
+        return None
+    return retrieval_model.get_file_collection_id(file_id)
 
 
 
@@ -532,6 +558,8 @@ def _persist_retrieval_trace(
         timings=timings,
         metadata={
             'cache_hit': result.get('cache_hit', False),
+            'cache': result.get('cache', {}),
+            'cache_version_scope': result.get('cache_version_scope', {}),
             'candidate_count': result.get('candidate_count', 0),
             'dedupe_removed_count': result.get('dedupe_removed_count', 0),
             'evidence_assessment': result.get('evidence_assessment', {}),
@@ -540,6 +568,7 @@ def _persist_retrieval_trace(
             'fusion': result.get('fusion', {}),
             'rerank': result.get('rerank', {}),
             'debug': result.get('debug', {}),
+            'retrieval_signature': result.get('retrieval_signature'),
         },
     )
 

@@ -102,6 +102,15 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 RETURNING id, created_at;
 """
 
+GET_FILE_COLLECTION_ID = """
+SELECT file_id, collection_id
+FROM (
+    SELECT id AS file_id, collection_id
+    FROM files
+) file_scope
+WHERE file_id = %s;
+"""
+
 
 
 def get_chunks_by_ids(chunk_ids: list[str]) -> list[dict]:
@@ -141,6 +150,14 @@ def search_keyword_chunks(
             limit,
         ),
     )
+
+
+
+def get_file_collection_id(file_id: UUID, conn=None) -> str | None:
+    row = fetch_all(GET_FILE_COLLECTION_ID, (str(file_id),), conn=conn)
+    if not row:
+        return None
+    return str(row[0]['collection_id']) if row[0].get('collection_id') else None
 
 
 

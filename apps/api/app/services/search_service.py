@@ -47,6 +47,8 @@ def search_chunks(*, payload, current_identity: dict) -> dict:
         'fusion': retrieval.get('fusion', {}),
         'rerank': retrieval.get('rerank', {}),
         'evidence_assessment': retrieval.get('evidence_assessment', {}),
+        'cache': retrieval.get('cache', {}),
+        'cache_version_scope': retrieval.get('cache_version_scope', {}),
         'auth': {
             'role': current_identity['role'],
             'auth_type': current_identity.get('auth_type', 'session'),

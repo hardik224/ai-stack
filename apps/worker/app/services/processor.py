@@ -2,8 +2,10 @@ import json
 from uuid import UUID, uuid4
 
 from app.config.settings import get_settings
+from app.library.cache import bump_retrieval_cache_versions
 from app.library.qdrant import close_qdrant_client, ensure_chunks_collection, init_qdrant_client, delete_file_points
 from app.library.queue import pop_job
+from app.library.redis_client import close_redis_client, init_redis_client
 from app.library.storage import close_storage_client, download_bytes, init_storage_client
 from app.services.chunking_service import chunk_parsed_units, chunk_to_dict
 from app.services.csv_processor import parse_csv_bytes
@@ -23,6 +25,7 @@ SUPPORTED_CONTENT_TYPES = {
 
 def run_worker_loop() -> None:
     settings = get_settings()
+    init_redis_client(settings.redis_url)
     init_storage_client(settings)
     init_qdrant_client(settings)
     ensure_chunks_collection()
@@ -50,6 +53,7 @@ def run_worker_loop() -> None:
     finally:
         close_storage_client()
         close_qdrant_client()
+        close_redis_client()
 
 
 
@@ -165,6 +169,7 @@ def process_job(job_payload: dict) -> None:
             source_type=parsed['source_type'],
         )
         _index_chunks(tracker=tracker, chunk_rows=chunk_rows)
+        cache_versions = bump_retrieval_cache_versions(collection_id=tracker.job.get('collection_id'))
         completed_at = utcnow()
         tracker.stage(
             stage_name='indexing',
@@ -183,7 +188,7 @@ def process_job(job_payload: dict) -> None:
             progress_percent=100,
             message='Ingestion completed successfully.',
             stage_status='completed',
-            details={'result': 'success'},
+            details={'result': 'success', 'cache_versions': cache_versions},
             total_chunks=total_chunks,
             processed_chunks=total_chunks,
             indexed_chunks=total_chunks,
@@ -192,7 +197,7 @@ def process_job(job_payload: dict) -> None:
             source_type=parsed['source_type'],
             completed_at=completed_at,
         )
-        print(json.dumps({'service': 'worker', 'status': 'completed', 'job_id': str(job_id)}), flush=True)
+        print(json.dumps({'service': 'worker', 'status': 'completed', 'job_id': str(job_id), 'cache_versions': cache_versions}), flush=True)
     except Exception as exc:
         failed_at = utcnow()
         tracker.stage(
