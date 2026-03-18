@@ -119,7 +119,12 @@ def retrieve_chunks(
     timings['rerank_ms'] = round((time.perf_counter() - rerank_start) * 1000, 2)
 
     deduped_items, dedupe_removed_count = dedupe_hits(ranked_items, enabled=dedupe)
-    context_items = assemble_context(deduped_items, top_k=resolved_top_k, max_context_chunks=resolved_max_context_chunks, max_context_chars=resolved_max_context_chars)
+    context_items = assemble_context(
+        items=deduped_items,
+        top_k=resolved_top_k,
+        max_context_chunks=resolved_max_context_chunks,
+        max_context_chars=resolved_max_context_chars,
+    )
     context_items = assign_citation_labels(context_items)
 
     result = {
@@ -324,3 +329,5 @@ def lexical_score(query_tokens: set[str], content_tokens: set[str]) -> float:
         return 0.0
     overlap = len(query_tokens.intersection(content_tokens))
     return overlap / max(len(query_tokens), 1)
+
+
