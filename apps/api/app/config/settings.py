@@ -53,6 +53,13 @@ class Settings:
     chat_min_grounding_items: int
     chat_min_grounding_score: float
     chat_min_grounding_lexical_overlap: float
+    hybrid_keyword_fetch_k: int
+    hybrid_rrf_k: int
+    hybrid_vector_weight: float
+    hybrid_keyword_weight: float
+    rerank_enabled: bool
+    rerank_provider: str
+    rerank_max_candidates: int
     sse_heartbeat_seconds: int
 
 
@@ -103,5 +110,12 @@ def get_settings() -> Settings:
         chat_min_grounding_items=int(os.getenv('CHAT_MIN_GROUNDING_ITEMS', '1')),
         chat_min_grounding_score=float(os.getenv('CHAT_MIN_GROUNDING_SCORE', '0.38')),
         chat_min_grounding_lexical_overlap=float(os.getenv('CHAT_MIN_GROUNDING_LEXICAL_OVERLAP', '0.08')),
+        hybrid_keyword_fetch_k=int(os.getenv('HYBRID_KEYWORD_FETCH_K', '12')),
+        hybrid_rrf_k=int(os.getenv('HYBRID_RRF_K', '60')),
+        hybrid_vector_weight=float(os.getenv('HYBRID_VECTOR_WEIGHT', '0.55')),
+        hybrid_keyword_weight=float(os.getenv('HYBRID_KEYWORD_WEIGHT', '0.75')),
+        rerank_enabled=_as_bool(os.getenv('RERANK_ENABLED'), default=True),
+        rerank_provider=os.getenv('RERANK_PROVIDER', 'heuristic').strip() or 'heuristic',
+        rerank_max_candidates=int(os.getenv('RERANK_MAX_CANDIDATES', '18')),
         sse_heartbeat_seconds=int(os.getenv('SSE_HEARTBEAT_SECONDS', '10')),
     )

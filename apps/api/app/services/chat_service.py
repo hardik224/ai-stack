@@ -365,7 +365,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
             status='completed',
             error_message=None,
         )
-        if citations:
+        if answer_citations:
             citation_service.persist_sources(message_id=assistant_message_id, citations=retrieval['items'])
 
         chat_model.touch_session(
