@@ -14,7 +14,7 @@ def init_redis_client(redis_url: str) -> None:
 
 def get_redis_client() -> redis.Redis:
     if _client is None:
-        raise RuntimeError("Redis client has not been initialized.")
+        raise RuntimeError('Redis client has not been initialized.')
     return _client
 
 
@@ -31,3 +31,26 @@ def enqueue_json(queue_name: str, payload: dict) -> int:
 
 def queue_length(queue_name: str) -> int:
     return int(get_redis_client().llen(queue_name))
+
+
+def cache_get_json(key: str):
+    raw = get_redis_client().get(key)
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def cache_set_json(key: str, payload, ttl_seconds: int | None = None) -> None:
+    serialized = json.dumps(payload, default=str)
+    client = get_redis_client()
+    if ttl_seconds and ttl_seconds > 0:
+        client.setex(key, ttl_seconds, serialized)
+    else:
+        client.set(key, serialized)
+
+
+def cache_delete(key: str) -> None:
+    get_redis_client().delete(key)

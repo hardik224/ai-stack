@@ -16,7 +16,9 @@ SELECT
     COALESCE(f.total_uploaded_bytes, 0) AS total_uploaded_bytes,
     COALESCE(j.job_count, 0) AS job_count,
     COALESCE(c.chat_session_count, 0) AS chat_session_count,
-    COALESCE(c.message_count, 0) AS message_count
+    COALESCE(c.message_count, 0) AS message_count,
+    COALESCE(c.assistant_message_count, 0) AS assistant_message_count,
+    COALESCE(c.failed_assistant_message_count, 0) AS failed_assistant_message_count
 FROM users u
 LEFT JOIN (
     SELECT
@@ -37,7 +39,9 @@ LEFT JOIN (
     SELECT
         cs.user_id,
         COUNT(DISTINCT cs.id) AS chat_session_count,
-        COUNT(cm.id) AS message_count
+        COUNT(cm.id) AS message_count,
+        COUNT(cm.id) FILTER (WHERE cm.role = 'assistant') AS assistant_message_count,
+        COUNT(cm.id) FILTER (WHERE cm.role = 'assistant' AND cm.status = 'failed') AS failed_assistant_message_count
     FROM chat_sessions cs
     LEFT JOIN chat_messages cm ON cm.session_id = cs.id
     GROUP BY cs.user_id
@@ -62,7 +66,9 @@ SELECT
     COALESCE(j.completed_jobs, 0) AS completed_jobs,
     COALESCE(j.failed_jobs, 0) AS failed_jobs,
     COALESCE(c.chat_session_count, 0) AS chat_session_count,
-    COALESCE(c.message_count, 0) AS message_count
+    COALESCE(c.message_count, 0) AS message_count,
+    COALESCE(c.assistant_message_count, 0) AS assistant_message_count,
+    COALESCE(c.failed_assistant_message_count, 0) AS failed_assistant_message_count
 FROM users u
 LEFT JOIN (
     SELECT
@@ -85,7 +91,9 @@ LEFT JOIN (
     SELECT
         cs.user_id,
         COUNT(DISTINCT cs.id) AS chat_session_count,
-        COUNT(cm.id) AS message_count
+        COUNT(cm.id) AS message_count,
+        COUNT(cm.id) FILTER (WHERE cm.role = 'assistant') AS assistant_message_count,
+        COUNT(cm.id) FILTER (WHERE cm.role = 'assistant' AND cm.status = 'failed') AS failed_assistant_message_count
     FROM chat_sessions cs
     LEFT JOIN chat_messages cm ON cm.session_id = cs.id
     GROUP BY cs.user_id
@@ -153,13 +161,23 @@ SELECT
     cs.status,
     cs.collection_id,
     cs.created_at,
+    cs.updated_at,
     cs.last_message_at,
-    COUNT(cm.id) AS message_count
+    COUNT(cm.id) AS message_count,
+    COUNT(cm.id) FILTER (WHERE cm.role = 'assistant') AS assistant_message_count,
+    COUNT(cm.id) FILTER (WHERE cm.role = 'assistant' AND cm.status = 'failed') AS failed_assistant_message_count,
+    COALESCE(SUM(src.citation_count), 0) AS citation_count,
+    MAX(CASE WHEN cm.role = 'assistant' THEN cm.status END) AS latest_assistant_status
 FROM chat_sessions cs
 JOIN users u ON u.id = cs.user_id
 LEFT JOIN chat_messages cm ON cm.session_id = cs.id
+LEFT JOIN (
+    SELECT message_id, COUNT(*) AS citation_count
+    FROM chat_message_sources
+    GROUP BY message_id
+) src ON src.message_id = cm.id
 GROUP BY cs.id, u.email, u.full_name
-ORDER BY cs.created_at DESC
+ORDER BY cs.updated_at DESC
 LIMIT %s OFFSET %s;
 """
 
@@ -175,10 +193,21 @@ SELECT
     cs.created_at,
     cs.updated_at,
     cs.last_message_at,
-    cs.metadata
+    cs.metadata,
+    COUNT(cm.id) AS message_count,
+    COUNT(cm.id) FILTER (WHERE cm.role = 'assistant') AS assistant_message_count,
+    COUNT(cm.id) FILTER (WHERE cm.role = 'assistant' AND cm.status = 'failed') AS failed_assistant_message_count,
+    COALESCE(SUM(src.citation_count), 0) AS citation_count
 FROM chat_sessions cs
 JOIN users u ON u.id = cs.user_id
-WHERE cs.id = %s;
+LEFT JOIN chat_messages cm ON cm.session_id = cs.id
+LEFT JOIN (
+    SELECT message_id, COUNT(*) AS citation_count
+    FROM chat_message_sources
+    GROUP BY message_id
+) src ON src.message_id = cm.id
+WHERE cs.id = %s
+GROUP BY cs.id, u.email, u.full_name;
 """
 
 LIST_CHAT_MESSAGES = """
@@ -188,13 +217,44 @@ SELECT
     cm.content,
     cm.token_count,
     cm.metadata,
+    cm.status,
+    cm.error_message,
     cm.created_at,
+    cm.updated_at,
     cm.user_id,
-    u.email AS user_email
+    u.email AS user_email,
+    COALESCE(src.citation_count, 0) AS citation_count
 FROM chat_messages cm
 LEFT JOIN users u ON u.id = cm.user_id
+LEFT JOIN (
+    SELECT message_id, COUNT(*) AS citation_count
+    FROM chat_message_sources
+    GROUP BY message_id
+) src ON src.message_id = cm.id
 WHERE cm.session_id = %s
 ORDER BY cm.created_at ASC;
+"""
+
+LIST_CHAT_MESSAGE_SOURCES = """
+SELECT
+    cms.id,
+    cms.message_id,
+    cms.chunk_id,
+    cms.file_id,
+    cms.citation_label,
+    cms.rank,
+    cms.score,
+    cms.metadata,
+    cms.created_at,
+    ch.page_number,
+    ch.row_number,
+    f.original_name AS file_name
+FROM chat_message_sources cms
+JOIN chat_messages cm ON cm.id = cms.message_id
+JOIN chunks ch ON ch.id = cms.chunk_id
+JOIN files f ON f.id = cms.file_id
+WHERE cm.session_id = %s
+ORDER BY cms.message_id ASC, cms.rank ASC;
 """
 
 DASHBOARD_SUMMARY = """
@@ -213,7 +273,10 @@ SELECT
     (SELECT COUNT(*) FROM ingestion_jobs WHERE status = 'failed') AS failed_jobs,
     (SELECT COUNT(*) FROM background_tasks WHERE status = 'running') AS running_background_processes,
     (SELECT COUNT(*) FROM chat_sessions) AS total_chat_sessions,
-    (SELECT COUNT(*) FROM chat_messages) AS total_chat_messages;
+    (SELECT COUNT(*) FROM chat_messages) AS total_chat_messages,
+    (SELECT COUNT(*) FROM chat_messages WHERE role = 'assistant') AS total_assistant_messages,
+    (SELECT COUNT(*) FROM chat_messages WHERE role = 'assistant' AND status = 'failed') AS failed_assistant_messages,
+    (SELECT COUNT(*) FROM chat_message_sources) AS total_chat_citations;
 """
 
 
@@ -221,28 +284,40 @@ def list_admin_users(limit: int, offset: int) -> list[dict]:
     return fetch_all(LIST_ADMIN_USERS, (limit, offset))
 
 
+
 def get_admin_user(user_id: UUID) -> dict | None:
     return fetch_one(GET_ADMIN_USER, (str(user_id),))
+
 
 
 def list_uploads(limit: int, offset: int) -> list[dict]:
     return fetch_all(LIST_UPLOADS, (limit, offset))
 
 
+
 def get_upload_summary() -> list[dict]:
     return fetch_all(UPLOAD_SUMMARY)
+
 
 
 def list_chat_sessions(limit: int, offset: int) -> list[dict]:
     return fetch_all(LIST_CHAT_SESSIONS, (limit, offset))
 
 
+
 def get_chat_session(session_id: UUID) -> dict | None:
     return fetch_one(GET_CHAT_SESSION, (str(session_id),))
 
 
+
 def list_chat_messages(session_id: UUID) -> list[dict]:
     return fetch_all(LIST_CHAT_MESSAGES, (str(session_id),))
+
+
+
+def list_chat_message_sources(session_id: UUID) -> list[dict]:
+    return fetch_all(LIST_CHAT_MESSAGE_SOURCES, (str(session_id),))
+
 
 
 def get_dashboard_summary() -> dict:
