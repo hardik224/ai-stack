@@ -13,30 +13,32 @@ from app.models import collection_model, file_model, job_model
 from app.services.activity_service import record_activity
 
 
-ALLOWED_UPLOAD_EXTENSIONS = {".pdf": "application/pdf", ".csv": "text/csv"}
+ALLOWED_UPLOAD_EXTENSIONS = {'.pdf': 'application/pdf', '.csv': 'text/csv'}
+
 
 
 def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, current_user: dict) -> dict:
     settings = get_settings()
     collection = collection_model.get_collection(collection_id)
     if not collection:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Collection not found.')
 
-    original_name = sanitize_filename(upload.filename or "upload")
+    original_name = sanitize_filename(upload.filename or 'upload')
     extension = Path(original_name).suffix.lower()
-    require_condition(extension in ALLOWED_UPLOAD_EXTENSIONS, "Only PDF and CSV uploads are supported.")
+    require_condition(extension in ALLOWED_UPLOAD_EXTENSIONS, 'Only PDF and CSV uploads are supported.')
 
     content = upload.file.read()
-    require_condition(bool(content), "Uploaded file is empty.")
+    require_condition(bool(content), 'Uploaded file is empty.')
     require_condition(
         len(content) <= settings.max_upload_size_bytes,
-        f"File exceeds the maximum size of {settings.max_upload_size_bytes} bytes.",
+        f'File exceeds the maximum size of {settings.max_upload_size_bytes} bytes.',
     )
 
     content_type = upload.content_type or ALLOWED_UPLOAD_EXTENSIONS[extension]
     checksum_sha256 = hashlib.sha256(content).hexdigest()
     file_id = uuid4()
     job_id = uuid4()
+    source_type = extension.replace('.', '')
     object_key = f"collections/{collection_id}/{utcnow().strftime('%Y/%m/%d')}/{file_id}{extension}"
 
     upload_bytes(
@@ -50,49 +52,56 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
         file_record = file_model.create_file(
             file_id=file_id,
             collection_id=collection_id,
-            uploaded_by=current_user["id"],
+            uploaded_by=current_user['id'],
             original_name=original_name,
-            stored_name=f"{file_id}{extension}",
+            stored_name=f'{file_id}{extension}',
             content_type=content_type,
             size_bytes=len(content),
             minio_bucket=settings.minio_documents_bucket,
             minio_object_key=object_key,
             checksum_sha256=checksum_sha256,
-            metadata={"extension": extension},
+            source_type=source_type,
+            ingestion_status='queued',
+            last_ingested_job_id=job_id,
+            metadata={'extension': extension},
             conn=conn,
         )
         job_record = job_model.create_ingestion_job(
             job_id=job_id,
             file_id=file_id,
             collection_id=collection_id,
-            created_by=current_user["id"],
+            created_by=current_user['id'],
             queue_name=settings.ingestion_queue_name,
-            status="queued",
-            current_stage="queued",
+            status='queued',
+            current_stage='queued',
             progress_percent=0,
-            stage_metadata={"queue_name": settings.ingestion_queue_name},
+            total_chunks=0,
+            processed_chunks=0,
+            indexed_chunks=0,
+            progress_message='Upload stored and queued for processing.',
+            stage_metadata={'queue_name': settings.ingestion_queue_name, 'source_type': source_type},
             conn=conn,
         )
         now = utcnow()
         job_model.upsert_processing_stage(
             job_id=job_id,
-            stage_name="queued",
+            stage_name='queued',
             stage_order=1,
-            stage_status="completed",
+            stage_status='completed',
             progress_percent=0,
-            details={"note": "Job queued for worker pickup."},
+            details={'note': 'Job queued for worker pickup.'},
             started_at=now,
             completed_at=now,
             conn=conn,
         )
         job_model.upsert_background_task(
             job_id=job_id,
-            task_type="ingestion",
-            status="queued",
-            current_stage="queued",
+            task_type='ingestion',
+            status='queued',
+            current_stage='queued',
             progress_percent=0,
             worker_id=None,
-            metadata={"queue_name": settings.ingestion_queue_name},
+            metadata={'queue_name': settings.ingestion_queue_name, 'source_type': source_type},
             started_at=None,
             completed_at=None,
             failed_at=None,
@@ -101,20 +110,20 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
         )
         job_model.create_job_event(
             job_id=job_id,
-            event_type="job.created",
-            message="Ingestion job created and queued.",
-            event_data={"file_id": str(file_id), "collection_id": str(collection_id)},
-            created_by_user_id=current_user["id"],
+            event_type='job.created',
+            message='Ingestion job created and queued.',
+            event_data={'file_id': str(file_id), 'collection_id': str(collection_id), 'source_type': source_type},
+            created_by_user_id=current_user['id'],
             conn=conn,
         )
         record_activity(
-            actor_user_id=current_user["id"],
-            activity_type="file.uploaded",
-            target_type="file",
+            actor_user_id=current_user['id'],
+            activity_type='file.uploaded',
+            target_type='file',
             target_id=file_id,
             description=f"Uploaded file '{original_name}'.",
-            visibility="foreground",
-            metadata={"collection_id": str(collection_id), "job_id": str(job_id)},
+            visibility='foreground',
+            metadata={'collection_id': str(collection_id), 'job_id': str(job_id), 'source_type': source_type},
             conn=conn,
         )
 
@@ -122,10 +131,11 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
         enqueue_json(
             settings.ingestion_queue_name,
             {
-                "job_id": str(job_id),
-                "file_id": str(file_id),
-                "collection_id": str(collection_id),
-                "uploaded_by": str(current_user["id"]),
+                'job_id': str(job_id),
+                'file_id': str(file_id),
+                'collection_id': str(collection_id),
+                'uploaded_by': str(current_user['id']),
+                'source_type': source_type,
             },
         )
     except Exception as exc:
@@ -133,8 +143,8 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
             failed_at = utcnow()
             job_model.update_ingestion_job(
                 job_id=job_id,
-                status="failed",
-                current_stage="failed",
+                status='failed',
+                current_stage='failed',
                 progress_percent=0,
                 attempts=None,
                 started_at=None,
@@ -142,17 +152,21 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
                 failed_at=failed_at,
                 error_message=str(exc),
                 worker_id=None,
-                stage_metadata={"queue_error": str(exc)},
+                stage_metadata={'queue_error': str(exc)},
+                total_chunks=0,
+                processed_chunks=0,
+                indexed_chunks=0,
+                progress_message='Failed to queue ingestion job.',
                 conn=conn,
             )
             job_model.upsert_background_task(
                 job_id=job_id,
-                task_type="ingestion",
-                status="failed",
-                current_stage="failed",
+                task_type='ingestion',
+                status='failed',
+                current_stage='failed',
                 progress_percent=0,
                 worker_id=None,
-                metadata={"queue_error": str(exc)},
+                metadata={'queue_error': str(exc)},
                 started_at=None,
                 completed_at=None,
                 failed_at=failed_at,
@@ -161,59 +175,92 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
             )
             job_model.create_job_event(
                 job_id=job_id,
-                event_type="job.queue_failed",
-                message="Failed to push job into Redis queue.",
-                event_data={"error": str(exc)},
-                created_by_user_id=current_user["id"],
+                event_type='job.queue_failed',
+                message='Failed to push job into Redis queue.',
+                event_data={'error': str(exc)},
+                created_by_user_id=current_user['id'],
                 conn=conn,
             )
             record_activity(
-                actor_user_id=current_user["id"],
-                activity_type="job.queue_failed",
-                target_type="job",
+                actor_user_id=current_user['id'],
+                activity_type='job.queue_failed',
+                target_type='job',
                 target_id=job_id,
-                description="Job queue push failed.",
-                visibility="background",
-                metadata={"error": str(exc)},
+                description='Job queue push failed.',
+                visibility='background',
+                metadata={'error': str(exc)},
                 conn=conn,
             )
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Job queue is unavailable.") from exc
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail='Job queue is unavailable.') from exc
 
     return {
-        "file": file_record,
-        "job": job_record,
-        "message": "File uploaded and job queued successfully.",
+        'file': file_record,
+        'job': job_record,
+        'message': 'File uploaded and job queued successfully.',
     }
+
 
 
 def list_files(*, current_user: dict, limit: int, offset: int) -> dict:
     settings = get_settings()
     limit, offset = validate_limit_offset(limit, offset, settings.default_list_limit, settings.max_list_limit)
-    if current_user["role"] == "admin":
+    if current_user['role'] == 'admin':
         items = file_model.list_files_for_admin(limit=limit, offset=offset)
     else:
-        items = file_model.list_files_for_user(user_id=current_user["id"], limit=limit, offset=offset)
-    return {"items": items, "limit": limit, "offset": offset}
+        items = file_model.list_files_for_user(user_id=current_user['id'], limit=limit, offset=offset)
+    return {'items': items, 'limit': limit, 'offset': offset}
+
 
 
 def get_file(*, file_id: UUID, current_user: dict) -> dict:
     file_record = file_model.get_file(file_id)
     if not file_record:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found.")
-    if current_user["role"] != "admin" and str(file_record["uploaded_by"]) != str(current_user["id"]):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to view this file.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='File not found.')
+    if current_user['role'] != 'admin' and str(file_record['uploaded_by']) != str(current_user['id']):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed to view this file.')
+
+    latest_job_id = file_record.get('latest_job_id')
+    latest_job_details = get_job(job_id=latest_job_id, current_user=current_user) if latest_job_id else None
+    file_record['ingestion_summary'] = {
+        'status': file_record.get('ingestion_status'),
+        'source_type': file_record.get('source_type'),
+        'page_count': file_record.get('page_count'),
+        'row_count': file_record.get('row_count'),
+        'total_chunks': file_record.get('total_chunks'),
+        'indexed_chunks': file_record.get('indexed_chunks'),
+        'last_ingested_job_id': file_record.get('last_ingested_job_id'),
+        'last_ingested_at': file_record.get('last_ingested_at'),
+        'error_message': file_record.get('error_message'),
+    }
+    if latest_job_details:
+        file_record['latest_job'] = latest_job_details['job']
+        file_record['latest_job_stages'] = latest_job_details['stages']
+        file_record['latest_job_background_task'] = latest_job_details['background_task']
     return file_record
+
 
 
 def get_job(*, job_id: UUID, current_user: dict) -> dict:
     job = job_model.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
-    if current_user["role"] != "admin" and str(job["created_by"]) != str(current_user["id"]):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to view this job.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Job not found.')
+    if current_user['role'] != 'admin' and str(job['created_by']) != str(current_user['id']):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed to view this job.')
     return {
-        "job": job,
-        "events": job_model.list_job_events(job_id),
-        "stages": job_model.list_job_stages(job_id),
-        "background_task": job_model.get_background_task(job_id),
+        'job': job,
+        'events': job_model.list_job_events(job_id),
+        'stages': job_model.list_job_stages(job_id),
+        'background_task': job_model.get_background_task(job_id),
+        'progress': {
+            'current_stage': job.get('current_stage'),
+            'progress_percent': job.get('progress_percent'),
+            'progress_message': job.get('progress_message'),
+            'total_chunks': job.get('total_chunks'),
+            'processed_chunks': job.get('processed_chunks'),
+            'indexed_chunks': job.get('indexed_chunks'),
+            'started_at': job.get('started_at'),
+            'completed_at': job.get('completed_at'),
+            'failed_at': job.get('failed_at'),
+            'error_message': job.get('error_message'),
+        },
     }

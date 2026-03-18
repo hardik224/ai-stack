@@ -13,9 +13,13 @@ INSERT INTO ingestion_jobs (
     status,
     current_stage,
     progress_percent,
+    total_chunks,
+    processed_chunks,
+    indexed_chunks,
+    progress_message,
     stage_metadata
 )
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 RETURNING
     id,
     file_id,
@@ -25,6 +29,10 @@ RETURNING
     status,
     current_stage,
     progress_percent,
+    total_chunks,
+    processed_chunks,
+    indexed_chunks,
+    progress_message,
     stage_metadata,
     created_at;
 """
@@ -108,6 +116,10 @@ SET
     worker_id = %s,
     worker_heartbeat_at = NOW(),
     stage_metadata = %s,
+    total_chunks = %s,
+    processed_chunks = %s,
+    indexed_chunks = %s,
+    progress_message = %s,
     updated_at = NOW()
 WHERE id = %s
 RETURNING
@@ -126,6 +138,10 @@ RETURNING
     error_message,
     worker_id,
     worker_heartbeat_at,
+    total_chunks,
+    processed_chunks,
+    indexed_chunks,
+    progress_message,
     stage_metadata,
     created_at,
     updated_at;
@@ -148,12 +164,22 @@ SELECT
     j.error_message,
     j.worker_id,
     j.worker_heartbeat_at,
+    j.total_chunks,
+    j.processed_chunks,
+    j.indexed_chunks,
+    j.progress_message,
     j.stage_metadata,
     j.created_at,
     j.updated_at,
     f.original_name AS file_name,
     f.content_type,
     f.size_bytes,
+    f.source_type,
+    f.page_count,
+    f.row_count,
+    f.ingestion_status AS file_ingestion_status,
+    f.total_chunks AS file_total_chunks,
+    f.indexed_chunks AS file_indexed_chunks,
     u.email AS created_by_email,
     c.name AS collection_name
 FROM ingestion_jobs j
@@ -228,6 +254,10 @@ SELECT
     j.status,
     j.current_stage,
     j.progress_percent,
+    j.total_chunks,
+    j.processed_chunks,
+    j.indexed_chunks,
+    j.progress_message,
     j.worker_id,
     j.worker_heartbeat_at,
     j.created_at,
@@ -253,8 +283,11 @@ SELECT
     COUNT(*) FILTER (WHERE status = 'processing') AS processing_jobs,
     COUNT(*) FILTER (WHERE status = 'completed') AS completed_jobs,
     COUNT(*) FILTER (WHERE status = 'failed') AS failed_jobs,
-    COUNT(*) FILTER (WHERE current_stage = 'validating') AS validating_jobs,
-    COUNT(*) FILTER (WHERE current_stage = 'chunking_pending') AS chunking_pending_jobs
+    COUNT(*) FILTER (WHERE current_stage = 'downloading') AS downloading_jobs,
+    COUNT(*) FILTER (WHERE current_stage = 'parsing') AS parsing_jobs,
+    COUNT(*) FILTER (WHERE current_stage = 'chunking') AS chunking_jobs,
+    COUNT(*) FILTER (WHERE current_stage = 'embedding') AS embedding_jobs,
+    COUNT(*) FILTER (WHERE current_stage = 'indexing') AS indexing_jobs
 FROM ingestion_jobs;
 """
 
@@ -301,6 +334,7 @@ FROM background_tasks;
 """
 
 
+
 def create_ingestion_job(
     *,
     job_id: UUID,
@@ -311,6 +345,10 @@ def create_ingestion_job(
     status: str,
     current_stage: str,
     progress_percent: float,
+    total_chunks: int,
+    processed_chunks: int,
+    indexed_chunks: int,
+    progress_message: str,
     stage_metadata: dict | None,
     conn=None,
 ) -> dict | None:
@@ -325,10 +363,15 @@ def create_ingestion_job(
             status,
             current_stage,
             progress_percent,
+            total_chunks,
+            processed_chunks,
+            indexed_chunks,
+            progress_message,
             to_jsonb(stage_metadata),
         ),
         conn=conn,
     )
+
 
 
 def create_job_event(
@@ -351,6 +394,7 @@ def create_job_event(
         ),
         conn=conn,
     )
+
 
 
 def upsert_processing_stage(
@@ -379,6 +423,7 @@ def upsert_processing_stage(
         ),
         conn=conn,
     )
+
 
 
 def upsert_background_task(
@@ -415,6 +460,7 @@ def upsert_background_task(
     )
 
 
+
 def update_ingestion_job(
     *,
     job_id: UUID,
@@ -428,6 +474,10 @@ def update_ingestion_job(
     error_message: str | None,
     worker_id: str | None,
     stage_metadata: dict | None,
+    total_chunks: int,
+    processed_chunks: int,
+    indexed_chunks: int,
+    progress_message: str | None,
     conn=None,
 ) -> dict | None:
     return execute_returning(
@@ -443,46 +493,58 @@ def update_ingestion_job(
             error_message,
             worker_id,
             to_jsonb(stage_metadata),
+            total_chunks,
+            processed_chunks,
+            indexed_chunks,
+            progress_message,
             str(job_id),
         ),
         conn=conn,
     )
 
 
+
 def get_job(job_id: UUID) -> dict | None:
     return fetch_one(GET_JOB, (str(job_id),))
+
 
 
 def list_job_events(job_id: UUID) -> list[dict]:
     return fetch_all(LIST_JOB_EVENTS, (str(job_id),))
 
 
+
 def list_job_stages(job_id: UUID) -> list[dict]:
     return fetch_all(LIST_JOB_STAGES, (str(job_id),))
 
 
-def get_background_task(job_id: UUID, task_type: str = "ingestion") -> dict | None:
+
+def get_background_task(job_id: UUID, task_type: str = 'ingestion') -> dict | None:
     return fetch_one(GET_BACKGROUND_TASK, (str(job_id), task_type))
+
 
 
 def list_admin_jobs(limit: int, offset: int, status: str | None = None) -> list[dict]:
     if status:
-        query = LIST_ADMIN_JOBS_BASE + " WHERE j.status = %s " + LIST_ADMIN_JOBS_ORDER
+        query = LIST_ADMIN_JOBS_BASE + ' WHERE j.status = %s ' + LIST_ADMIN_JOBS_ORDER
         return fetch_all(query, (status, limit, offset))
     query = LIST_ADMIN_JOBS_BASE + LIST_ADMIN_JOBS_ORDER
     return fetch_all(query, (limit, offset))
+
 
 
 def get_job_summary() -> dict:
     return fetch_one(JOB_SUMMARY) or {}
 
 
+
 def list_processes(limit: int, offset: int, status: str | None = None) -> list[dict]:
     if status:
-        query = LIST_PROCESSES_BASE + " WHERE bt.status = %s " + LIST_PROCESSES_ORDER
+        query = LIST_PROCESSES_BASE + ' WHERE bt.status = %s ' + LIST_PROCESSES_ORDER
         return fetch_all(query, (status, limit, offset))
     query = LIST_PROCESSES_BASE + LIST_PROCESSES_ORDER
     return fetch_all(query, (limit, offset))
+
 
 
 def get_process_summary() -> dict:

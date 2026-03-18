@@ -15,9 +15,12 @@ INSERT INTO files (
     minio_bucket,
     minio_object_key,
     checksum_sha256,
+    source_type,
+    ingestion_status,
+    last_ingested_job_id,
     metadata
 )
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 RETURNING
     id,
     collection_id,
@@ -29,6 +32,9 @@ RETURNING
     minio_bucket,
     minio_object_key,
     checksum_sha256,
+    source_type,
+    ingestion_status,
+    last_ingested_job_id,
     metadata,
     created_at;
 """
@@ -45,6 +51,15 @@ SELECT
     f.minio_bucket,
     f.minio_object_key,
     f.checksum_sha256,
+    f.source_type,
+    f.page_count,
+    f.row_count,
+    f.total_chunks,
+    f.indexed_chunks,
+    f.ingestion_status,
+    f.last_ingested_job_id,
+    f.last_ingested_at,
+    f.error_message,
     f.metadata,
     f.created_at,
     f.updated_at,
@@ -54,7 +69,15 @@ SELECT
     j.id AS latest_job_id,
     j.status AS latest_job_status,
     j.current_stage AS latest_job_stage,
-    j.progress_percent AS latest_job_progress
+    j.progress_percent AS latest_job_progress,
+    j.total_chunks AS latest_job_total_chunks,
+    j.processed_chunks AS latest_job_processed_chunks,
+    j.indexed_chunks AS latest_job_indexed_chunks,
+    j.progress_message AS latest_job_progress_message,
+    j.started_at AS latest_job_started_at,
+    j.completed_at AS latest_job_completed_at,
+    j.failed_at AS latest_job_failed_at,
+    j.error_message AS latest_job_error_message
 FROM files f
 LEFT JOIN collections c ON c.id = f.collection_id
 JOIN users u ON u.id = f.uploaded_by
@@ -63,7 +86,15 @@ LEFT JOIN LATERAL (
         ij.id,
         ij.status,
         ij.current_stage,
-        ij.progress_percent
+        ij.progress_percent,
+        ij.total_chunks,
+        ij.processed_chunks,
+        ij.indexed_chunks,
+        ij.progress_message,
+        ij.started_at,
+        ij.completed_at,
+        ij.failed_at,
+        ij.error_message
     FROM ingestion_jobs ij
     WHERE ij.file_id = f.id
     ORDER BY ij.created_at DESC
@@ -80,6 +111,10 @@ SELECT
     f.original_name,
     f.content_type,
     f.size_bytes,
+    f.source_type,
+    f.total_chunks,
+    f.indexed_chunks,
+    f.ingestion_status,
     f.created_at,
     c.name AS collection_name,
     u.email AS uploaded_by_email,
@@ -87,7 +122,9 @@ SELECT
     j.id AS latest_job_id,
     j.status AS latest_job_status,
     j.current_stage AS latest_job_stage,
-    j.progress_percent AS latest_job_progress
+    j.progress_percent AS latest_job_progress,
+    j.processed_chunks AS latest_job_processed_chunks,
+    j.total_chunks AS latest_job_total_chunks
 FROM files f
 LEFT JOIN collections c ON c.id = f.collection_id
 JOIN users u ON u.id = f.uploaded_by
@@ -96,7 +133,9 @@ LEFT JOIN LATERAL (
         ij.id,
         ij.status,
         ij.current_stage,
-        ij.progress_percent
+        ij.progress_percent,
+        ij.processed_chunks,
+        ij.total_chunks
     FROM ingestion_jobs ij
     WHERE ij.file_id = f.id
     ORDER BY ij.created_at DESC
@@ -114,12 +153,18 @@ SELECT
     f.original_name,
     f.content_type,
     f.size_bytes,
+    f.source_type,
+    f.total_chunks,
+    f.indexed_chunks,
+    f.ingestion_status,
     f.created_at,
     c.name AS collection_name,
     j.id AS latest_job_id,
     j.status AS latest_job_status,
     j.current_stage AS latest_job_stage,
-    j.progress_percent AS latest_job_progress
+    j.progress_percent AS latest_job_progress,
+    j.processed_chunks AS latest_job_processed_chunks,
+    j.total_chunks AS latest_job_total_chunks
 FROM files f
 LEFT JOIN collections c ON c.id = f.collection_id
 LEFT JOIN LATERAL (
@@ -127,7 +172,9 @@ LEFT JOIN LATERAL (
         ij.id,
         ij.status,
         ij.current_stage,
-        ij.progress_percent
+        ij.progress_percent,
+        ij.processed_chunks,
+        ij.total_chunks
     FROM ingestion_jobs ij
     WHERE ij.file_id = f.id
     ORDER BY ij.created_at DESC
@@ -137,6 +184,7 @@ WHERE f.uploaded_by = %s
 ORDER BY f.created_at DESC
 LIMIT %s OFFSET %s;
 """
+
 
 
 def create_file(
@@ -151,6 +199,9 @@ def create_file(
     minio_bucket: str,
     minio_object_key: str,
     checksum_sha256: str,
+    source_type: str,
+    ingestion_status: str,
+    last_ingested_job_id: UUID,
     metadata: dict | None,
     conn=None,
 ) -> dict | None:
@@ -167,18 +218,24 @@ def create_file(
             minio_bucket,
             minio_object_key,
             checksum_sha256,
+            source_type,
+            ingestion_status,
+            str(last_ingested_job_id),
             to_jsonb(metadata),
         ),
         conn=conn,
     )
 
 
+
 def get_file(file_id: UUID) -> dict | None:
     return fetch_one(GET_FILE, (str(file_id),))
 
 
+
 def list_files_for_admin(limit: int, offset: int) -> list[dict]:
     return fetch_all(LIST_FILES_FOR_ADMIN, (limit, offset))
+
 
 
 def list_files_for_user(user_id: UUID, limit: int, offset: int) -> list[dict]:

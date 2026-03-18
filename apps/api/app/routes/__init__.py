@@ -3,7 +3,9 @@ from app.routes.auth_routes import router as auth_router
 from app.routes.collection_routes import router as collection_router
 from app.routes.file_routes import router as file_router
 from app.routes.health_routes import router as health_router
+from app.routes.search_routes import router as search_router
 from app.routes.user_routes import router as user_router
+
 
 
 def get_routers():
@@ -13,5 +15,6 @@ def get_routers():
         user_router,
         collection_router,
         file_router,
+        search_router,
         admin_router,
     ]
