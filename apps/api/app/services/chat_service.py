@@ -289,6 +289,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
             )
 
             generation_start = time.perf_counter()
+            llm_error = None
             try:
                 for delta in stream_markdown_answer(prompt_messages, mode=mode):
                     if not delta:
@@ -300,9 +301,15 @@ def _chat_event_stream(*, payload, current_identity: dict):
                         session_id=str(session_id),
                         message_id=str(assistant_message_id),
                     )
-            except RuntimeError:
+            except Exception as exc:
+                llm_error = str(exc)
                 generation_mode = 'grounded_fallback'
-                fallback_answer = _build_grounded_fallback_markdown(question=payload.message, citations=citations, mode=mode)
+                fallback_answer = _build_grounded_fallback_markdown(
+                    question=payload.message,
+                    citations=citations,
+                    mode=mode,
+                    error_message=llm_error,
+                )
                 answer_parts = []
                 for delta in _chunk_text(fallback_answer):
                     answer_parts.append(delta)
@@ -475,7 +482,7 @@ def _estimate_token_count(text: str) -> int:
 
 
 
-def _build_grounded_fallback_markdown(*, question: str, citations: list[dict], mode: str) -> str:
+def _build_grounded_fallback_markdown(*, question: str, citations: list[dict], mode: str, error_message: str | None = None) -> str:
     heading = '## Analysis' if mode == 'analysis' else '## Evidence'
     summary_line = 'I found grounded evidence, but the configured language model backend is not available right now.'
     lines = [
@@ -487,10 +494,14 @@ def _build_grounded_fallback_markdown(*, question: str, citations: list[dict], m
         '',
         f'- Original question: **{question.strip()}**',
         '- The evidence below is available and cited, but a richer generated synthesis could not be completed.',
+    ]
+    if error_message:
+        lines.append('- The system automatically fell back to a citation-preserving response because the primary LLM request failed.')
+    lines.extend([
         '',
         heading,
         '',
-    ]
+    ])
     for citation in citations:
         location = []
         if citation.get('page_number'):
@@ -524,3 +535,5 @@ def _mark_assistant_failed(message_id: str, error_message: str, *, mode: str) ->
             collection_id=None,
             metadata={'last_failed_message_id': str(message_id), 'last_mode': mode},
         )
+
+
