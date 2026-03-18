@@ -21,14 +21,15 @@ def search_chunks(*, payload, current_identity: dict) -> dict:
     client = get_qdrant_client()
     query_filter = _build_filter(payload)
 
-    results = client.search(
+    response = client.query_points(
         collection_name=settings.qdrant_chunks_collection,
-        query_vector=query_vector,
+        query=query_vector,
         query_filter=query_filter,
         with_payload=True,
         limit=limit,
         score_threshold=payload.score_threshold,
     )
+    results = list(getattr(response, 'points', response) or [])
 
     chunk_ids = [point.payload.get('chunk_id') for point in results if point.payload and point.payload.get('chunk_id')]
     rows = search_model.get_chunks_by_ids(chunk_ids)
