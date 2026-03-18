@@ -198,6 +198,7 @@ export interface ProcessItem extends BackgroundTask {
   file_id?: string | null;
   file_name?: string | null;
   created_by_email?: string | null;
+  updated_at?: string | null;
 }
 
 export interface ActivityItem {
