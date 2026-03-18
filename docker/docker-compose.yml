@@ -190,6 +190,26 @@ services:
     networks:
       - ai-stack-network
 
+  front-end:
+    build:
+      context: ../apps/front-end
+      dockerfile: Dockerfile
+    container_name: ai-stack-front-end
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      PORT: 2002
+      NEXT_PUBLIC_API_PROXY_PREFIX: /proxy
+      API_PROXY_TARGET: http://api:2000
+    ports:
+      - "2002:2002"
+    volumes:
+      - ../logs/front-end:/app/logs
+    networks:
+      - ai-stack-network
+
 networks:
   ai-stack-network:
     external: true
