@@ -209,6 +209,8 @@ def _chat_event_stream(*, payload, current_identity: dict):
         retrieval['timings']['retrieval_wall_ms'] = round((time.perf_counter() - retrieval_started) * 1000, 2)
 
         citations = _serialize_citations(retrieval.get('items', []))
+        evidence_assessment = retrieval.get('evidence_assessment', {})
+        answer_citations = citations if evidence_assessment.get('is_sufficient', False) else []
         yield format_sse_event(
             'retrieval.completed',
             {
@@ -222,6 +224,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 'filters': retrieval['filters'],
                 'timings': retrieval['timings'],
                 'citations': citations,
+                'evidence_assessment': evidence_assessment,
             },
             session_id=str(session_id),
             message_id=str(assistant_message_id),
@@ -232,7 +235,9 @@ def _chat_event_stream(*, payload, current_identity: dict):
         generation_ms = 0.0
         generation_mode = 'llm'
 
-        if not retrieval.get('items'):
+        evidence_assessment = retrieval.get('evidence_assessment', {})
+        answer_citations = citations if evidence_assessment.get('is_sufficient', False) else []
+        if not retrieval.get('items') or not evidence_assessment.get('is_sufficient', False):
             generation_mode = 'insufficient_evidence'
             yield format_sse_event(
                 'generation.started',
@@ -349,7 +354,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 'cache_hit': retrieval['cache_hit'],
             },
             'timings': timings,
-            'citations': citations,
+            'citations': answer_citations,
         }
 
         chat_model.update_chat_message(
@@ -382,7 +387,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
             visibility='foreground',
             metadata={
                 'session_id': str(session_id),
-                'citation_count': len(citations),
+                'citation_count': len(answer_citations),
                 'generation_mode': generation_mode,
                 'llm_provider': settings.llm_provider,
                 'llm_model': settings.llm_model,
@@ -393,7 +398,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
 
         yield format_sse_event(
             'citations.completed',
-            {'citations': citations},
+            {'citations': answer_citations},
             session_id=str(session_id),
             message_id=str(assistant_message_id),
         )
@@ -409,7 +414,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 'message_id': str(assistant_message_id),
                 'mode': mode,
                 'status': 'completed',
-                'citation_count': len(citations),
+                'citation_count': len(answer_citations),
                 'timings': timings,
                 'generation_mode': generation_mode,
             },
@@ -535,5 +540,7 @@ def _mark_assistant_failed(message_id: str, error_message: str, *, mode: str) ->
             collection_id=None,
             metadata={'last_failed_message_id': str(message_id), 'last_mode': mode},
         )
+
+
 
 

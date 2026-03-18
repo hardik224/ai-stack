@@ -50,6 +50,9 @@ class Settings:
     chat_default_max_context_chars: int
     chat_retrieval_cache_ttl_seconds: int
     chat_embedding_cache_ttl_seconds: int
+    chat_min_grounding_items: int
+    chat_min_grounding_score: float
+    chat_min_grounding_lexical_overlap: float
     sse_heartbeat_seconds: int
 
 
@@ -97,5 +100,8 @@ def get_settings() -> Settings:
         chat_default_max_context_chars=int(os.getenv('CHAT_DEFAULT_MAX_CONTEXT_CHARS', '12000')),
         chat_retrieval_cache_ttl_seconds=int(os.getenv('CHAT_RETRIEVAL_CACHE_TTL_SECONDS', '60')),
         chat_embedding_cache_ttl_seconds=int(os.getenv('CHAT_EMBEDDING_CACHE_TTL_SECONDS', '300')),
+        chat_min_grounding_items=int(os.getenv('CHAT_MIN_GROUNDING_ITEMS', '1')),
+        chat_min_grounding_score=float(os.getenv('CHAT_MIN_GROUNDING_SCORE', '0.38')),
+        chat_min_grounding_lexical_overlap=float(os.getenv('CHAT_MIN_GROUNDING_LEXICAL_OVERLAP', '0.08')),
         sse_heartbeat_seconds=int(os.getenv('SSE_HEARTBEAT_SECONDS', '10')),
     )

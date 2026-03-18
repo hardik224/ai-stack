@@ -77,6 +77,8 @@ def retrieve_chunks(
         cached_timings['total_ms'] = round((time.perf_counter() - total_start) * 1000, 2)
         cached['timings'] = cached_timings
         cached['cache_hit'] = True
+        if 'evidence_assessment' not in cached:
+            cached['evidence_assessment'] = assess_evidence(cached.get('items', []))
         if persist_trace:
             retrieval_model.create_retrieval_log(
                 session_id=session_id,
@@ -90,7 +92,12 @@ def retrieve_chunks(
                 dedupe_enabled=dedupe,
                 hit_count=len(cached.get('items', [])),
                 timings=cached_timings,
-                metadata={'cache_hit': True, 'candidate_count': cached.get('candidate_count', 0), 'dedupe_removed_count': cached.get('dedupe_removed_count', 0)},
+                metadata={
+                    'cache_hit': True,
+                    'candidate_count': cached.get('candidate_count', 0),
+                    'dedupe_removed_count': cached.get('dedupe_removed_count', 0),
+                    'evidence_assessment': cached.get('evidence_assessment', {}),
+                },
             )
         return cached
 
@@ -126,6 +133,7 @@ def retrieve_chunks(
         max_context_chars=resolved_max_context_chars,
     )
     context_items = assign_citation_labels(context_items)
+    evidence_assessment = assess_evidence(context_items)
 
     result = {
         'query': query,
@@ -142,6 +150,7 @@ def retrieve_chunks(
         'filters': filters,
         'timings': timings,
         'cache_hit': False,
+        'evidence_assessment': evidence_assessment,
     }
     result['timings']['total_ms'] = round((time.perf_counter() - total_start) * 1000, 2)
 
@@ -160,7 +169,12 @@ def retrieve_chunks(
             dedupe_enabled=dedupe,
             hit_count=len(context_items),
             timings=result['timings'],
-            metadata={'cache_hit': False, 'candidate_count': len(ranked_items), 'dedupe_removed_count': dedupe_removed_count},
+            metadata={
+                'cache_hit': False,
+                'candidate_count': len(ranked_items),
+                'dedupe_removed_count': dedupe_removed_count,
+                'evidence_assessment': evidence_assessment,
+            },
         )
 
     return result
@@ -255,6 +269,7 @@ def rerank_hits(*, expanded_query: str, qdrant_points: list, rows_by_id: dict[st
                 'source_type': row.get('source_type'),
                 'score': round(float(point.score), 6),
                 'rerank_score': round(rerank_score, 6),
+                'lexical_overlap': round(lexical_overlap, 6),
                 'text': row['content'],
                 'token_count': row.get('token_count'),
                 'content_hash': row.get('content_hash'),
@@ -319,6 +334,41 @@ def assign_citation_labels(items: list[dict]) -> list[dict]:
 
 
 
+def assess_evidence(items: list[dict]) -> dict:
+    settings = get_settings()
+    if not items:
+        return {
+            'is_sufficient': False,
+            'reason': 'no_grounded_evidence',
+            'selected_count': 0,
+            'top_rerank_score': 0.0,
+            'top_vector_score': 0.0,
+            'max_lexical_overlap': 0.0,
+        }
+
+    top_rerank_score = max(float(item.get('rerank_score', 0.0)) for item in items)
+    top_vector_score = max(float(item.get('score', 0.0)) for item in items)
+    max_lexical_overlap = max(float(item.get('lexical_overlap', 0.0)) for item in items)
+    selected_count = len(items)
+
+    is_sufficient = (
+        selected_count >= settings.chat_min_grounding_items
+        and top_rerank_score >= settings.chat_min_grounding_score
+        and max_lexical_overlap >= settings.chat_min_grounding_lexical_overlap
+    )
+
+    reason = 'grounded_evidence_sufficient' if is_sufficient else 'grounded_evidence_too_weak'
+    return {
+        'is_sufficient': is_sufficient,
+        'reason': reason,
+        'selected_count': selected_count,
+        'top_rerank_score': round(top_rerank_score, 6),
+        'top_vector_score': round(top_vector_score, 6),
+        'max_lexical_overlap': round(max_lexical_overlap, 6),
+    }
+
+
+
 def tokenize(text: str) -> set[str]:
     return set(WORD_RE.findall(text.lower()))
 
@@ -329,5 +379,3 @@ def lexical_score(query_tokens: set[str], content_tokens: set[str]) -> float:
         return 0.0
     overlap = len(query_tokens.intersection(content_tokens))
     return overlap / max(len(query_tokens), 1)
-
-
