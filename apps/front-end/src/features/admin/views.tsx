@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Activity, ArrowDownToLine, ArrowRight, Bot, Boxes, ChevronLeft, ChevronRight, Cpu, DatabaseZap, FileClock, Filter, FolderKanban, HardDriveDownload, MessageSquareText, Pencil, Power, ShieldCheck, Trash2, UploadCloud, UserPlus, Users } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDownToLine, ArrowRight, Bot, Boxes, ChevronLeft, ChevronRight, Cpu, DatabaseZap, FileClock, Filter, FolderKanban, HardDriveDownload, MessageSquareText, Pencil, Power, ShieldCheck, TerminalSquare, Trash2, UploadCloud, UserPlus, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Area, AreaChart } from 'recharts';
@@ -30,6 +30,7 @@ import {
   fetchChats,
   fetchCollections,
   fetchDashboardSummary,
+  fetchErrorConsole,
   fetchJobDetail,
   fetchJobs,
   fetchJobSummary,
@@ -301,7 +302,7 @@ function CreateUserDialog() {
       {open ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
           <Card className="w-full max-w-xl p-6">
-            <SectionHeading eyebrow="Provisioning" title="Create a new platform user" description="The current backend supports role assignment during user creation. Editing roles later still needs a dedicated backend update endpoint." />
+            <SectionHeading eyebrow="Provisioning" title="Create a new platform user" description="Create a new platform user with the right access level and onboarding details." />
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Full name" value={form.full_name} onChange={(event) => setForm((current) => ({ ...current, full_name: event.target.value }))} />
               <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Email address" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
@@ -1152,6 +1153,58 @@ function createLlmFormState(config?: LlmConfigItem): LlmConfigPayload {
     activate: config?.is_active ?? false,
     metadata: config?.metadata ?? {},
   };
+}
+
+
+function ConsoleView() {
+  const token = useToken();
+  const query = useQuery({
+    queryKey: ['admin-error-console'],
+    queryFn: () => fetchErrorConsole(token, { limit: 200 }),
+    refetchInterval: 5000,
+  });
+
+  return (
+    <div className="space-y-6">
+      <SectionHeading eyebrow="Diagnostics" title="Backend error console" description="Live application errors, LLM failures, and unhandled backend exceptions appear here for admin review." />
+      <QueryBoundary isLoading={query.isLoading} error={query.error} onRetry={() => query.refetch()}>
+        <Card className="overflow-hidden border border-red-500/20 bg-black p-0 shadow-[0_0_0_1px_rgba(239,68,68,0.08)]">
+          <div className="flex items-center justify-between border-b border-red-500/15 bg-black px-5 py-4">
+            <div className="flex items-center gap-3 text-red-300">
+              <TerminalSquare className="size-4" />
+              <span className="font-mono text-sm">ai-stack error console</span>
+            </div>
+            <button onClick={() => query.refetch()} className="rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-200 transition hover:bg-red-500/15">Refresh</button>
+          </div>
+          <div className="max-h-[72vh] overflow-y-auto p-4 font-mono text-[12px] leading-6 text-red-300">
+            {query.data?.items?.length ? (
+              <div className="space-y-3">
+                {query.data.items.map((item, index) => (
+                  <div key={`${item.timestamp}-${index}`} className="rounded-xl border border-red-500/10 bg-[#050505] px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-red-200/80">
+                      <span>{item.timestamp}</span>
+                      <span>{item.level}</span>
+                      <span>{item.source}</span>
+                      {item.exception_type ? <span>{item.exception_type}</span> : null}
+                    </div>
+                    <div className="mt-2 text-sm text-red-200">{item.message}</div>
+                    {item.exception ? <div className="mt-2 text-red-400/90">{item.exception}</div> : null}
+                    {item.details && Object.keys(item.details).length ? <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words text-red-300/80">{JSON.stringify(item.details, null, 2)}</pre> : null}
+                    {item.traceback ? <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-words text-red-500/80">{item.traceback}</pre> : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-center text-red-200/70">
+                <AlertTriangle className="size-6" />
+                <p>No backend errors have been captured yet.</p>
+              </div>
+            )}
+          </div>
+        </Card>
+      </QueryBoundary>
+    </div>
+  );
 }
 
 function ModelsView() {

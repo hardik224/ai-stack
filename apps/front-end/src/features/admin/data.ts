@@ -23,6 +23,7 @@ import type {
   UploadSummaryItem,
   AdminUserItem,
   WorkspaceSummary,
+  ErrorConsoleResponse,
 } from '@/features/admin/types';
 
 const API_PREFIX = process.env.NEXT_PUBLIC_API_PROXY_PREFIX || '/proxy';
@@ -191,6 +192,10 @@ export async function fetchProcessSummary(token: string) {
 
 export async function fetchActivity(token: string, query?: { limit?: number; offset?: number }) {
   return requestJson<{ items: ActivityItem[]; limit: number; offset: number }>(buildUrl('/admin/activity/recent', query), { method: 'GET' }, token);
+}
+
+export async function fetchErrorConsole(token: string, query?: { limit?: number }) {
+  return requestJson<ErrorConsoleResponse>(buildUrl('/admin/errors/console', query), { method: 'GET' }, token);
 }
 
 export async function fetchChats(token: string, query?: { limit?: number; offset?: number }) {

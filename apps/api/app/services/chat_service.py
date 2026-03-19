@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from app.config.settings import get_settings
 from app.library import cache
+from app.library.error_console import record_backend_error
 from app.library.security import validate_limit_offset
 from app.library.sse import format_sse_comment, format_sse_event
 from app.models import chat_model
@@ -422,6 +423,19 @@ def _chat_event_stream(*, payload, current_identity: dict):
                     )
             except Exception as exc:
                 llm_error = str(exc)
+                record_backend_error(
+                    source='chat.llm_generation_failed',
+                    message='LLM generation failed during chat response streaming.',
+                    details={
+                        'session_id': str(session_id),
+                        'assistant_message_id': str(assistant_message_id),
+                        'mode': mode,
+                        'provider': runtime_llm.provider,
+                        'model': runtime_llm.model,
+                        'question': payload.message[:500],
+                    },
+                    exc=exc,
+                )
                 generation_mode = 'grounded_fallback'
                 fallback_answer = _build_grounded_fallback_markdown(
                     question=payload.message,
@@ -474,8 +488,8 @@ def _chat_event_stream(*, payload, current_identity: dict):
             'cache': cache_state,
         }
 
-        final_status = 'failed' if generation_mode == 'insufficient_evidence' else 'completed'
-        final_error_message = "I couldn't find enough information in the uploaded files." if generation_mode == 'insufficient_evidence' else None
+        final_status = 'failed' if generation_mode in {'insufficient_evidence', 'grounded_fallback'} else 'completed'
+        final_error_message = ("I couldn't find enough information in the uploaded files." if generation_mode == 'insufficient_evidence' else "Something went wrong while generating the answer. Please contact the administrator." if generation_mode == 'grounded_fallback' else None)
 
         chat_model.update_chat_message(
             message_id=assistant_message_id,
@@ -507,7 +521,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
             activity_type='chat.message.assistant.failed' if final_status == 'failed' else 'chat.message.assistant.completed',
             target_type='chat_message',
             target_id=assistant_message_id,
-            description='Assistant could not answer from grounded evidence.' if final_status == 'failed' else 'Assistant completed a grounded answer.',
+            description='Assistant could not answer from grounded evidence.' if generation_mode == 'insufficient_evidence' else 'Assistant response failed because the language model backend was unavailable.' if final_status == 'failed' else 'Assistant completed a grounded answer.',
             visibility='foreground',
             metadata={
                 'session_id': str(session_id),

@@ -134,6 +134,11 @@ def get_recent_activity(limit: int = Query(default=20), offset: int = Query(defa
     return admin_controller.get_recent_activity(limit=limit, offset=offset)
 
 
+@router.get("/errors/console", dependencies=[admin_required])
+def get_error_console(limit: int = Query(default=200)):
+    return admin_controller.get_error_console(limit=limit)
+
+
 @router.get("/llm/configs", dependencies=[admin_required])
 def get_llm_configs():
     return admin_controller.get_llm_configs()

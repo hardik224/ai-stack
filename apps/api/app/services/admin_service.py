@@ -6,6 +6,7 @@ from qdrant_client import models as qdrant_models
 
 from app.config.settings import get_settings
 from app.library import cache
+from app.library.error_console import list_backend_errors
 from app.library.db import transaction
 from app.library.qdrant import get_qdrant_client
 from app.library.queue import queue_length
@@ -430,3 +431,8 @@ def delete_users(*, user_ids: list[UUID], current_user: dict) -> dict:
         'cache_versions': cache_versions,
         'warnings': warnings,
     }
+
+
+
+def get_error_console(*, limit: int = 200) -> dict:
+    return {'items': list_backend_errors(limit=limit), 'limit': limit}

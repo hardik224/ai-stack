@@ -219,6 +219,7 @@ def retrieve_chunks(
     context_start = time.perf_counter()
     context_items = assemble_context(
         items=deduped_items,
+        query=expanded_query,
         top_k=resolved_top_k,
         max_context_chunks=resolved_max_context_chunks,
         max_context_chars=resolved_max_context_chars,
@@ -311,24 +312,36 @@ def normalize_query(query: str) -> str:
 
 
 def _should_expand_query(normalized_query: str) -> bool:
-    return len(normalized_query) < 48 or any(token in normalized_query for token in {'it', 'that', 'they', 'those', 'this'})
+    tokens = normalized_query.split()
+    followup_phrases = (
+        'what about', 'how about', 'tell me more', 'go deeper', 'explain more', 'and also', 'what else', 'why is', 'how is'
+    )
+    followup_terms = {'it', 'that', 'they', 'those', 'this', 'these', 'he', 'she', 'them', 'more', 'else', 'then'}
+    return (
+        len(normalized_query) <= 96 and len(tokens) <= 12
+        or any(phrase in normalized_query for phrase in followup_phrases)
+        or any(token in followup_terms for token in tokens)
+    )
 
 
 
 def expand_query_with_history(*, session_id: UUID, normalized_query: str, history_turns: int) -> str:
-    recent_messages = chat_model.list_recent_messages_for_session(session_id, history_turns)
-    carryover = []
+    recent_messages = chat_model.list_recent_messages_for_session(session_id, max(history_turns * 2, 8))
+    carryover: list[str] = []
     for message in reversed(recent_messages):
-        if message.get('role') != 'user':
+        role = message.get('role')
+        if role not in {'user', 'assistant'}:
             continue
         text = normalize_query(message.get('content', ''))
-        if text and text != normalized_query:
-            carryover.append(text)
-        if len(carryover) >= 2:
+        if not text or text == normalized_query:
+            continue
+        label = 'prior user context' if role == 'user' else 'prior assistant context'
+        carryover.append(f"{label}: {text[:220]}")
+        if len(carryover) >= 3:
             break
     if not carryover:
         return normalized_query
-    return f"{' '.join(carryover[-2:])} {normalized_query}".strip()
+    return f"{' | '.join(reversed(carryover))} | current question: {normalized_query}".strip()
 
 
 
@@ -434,39 +447,81 @@ def dedupe_hits(items: list[dict], *, enabled: bool) -> tuple[list[dict], int]:
 
 
 
-def assemble_context(*, items: list[dict], top_k: int, max_context_chunks: int, max_context_chars: int) -> list[dict]:
+def assemble_context(*, items: list[dict], query: str, top_k: int, max_context_chunks: int, max_context_chars: int) -> list[dict]:
     selected: list[dict] = []
     total_chars = 0
     per_file_counts: Counter[str] = Counter()
+    selected_chunk_indexes: dict[str, list[int]] = {}
     used_indexes: set[int] = set()
-    target_diverse_count = max(1, min(top_k, max_context_chunks) // 2)
+    synthesis_query = _is_synthesis_query(query)
+    target_diverse_count = max(1, min(top_k, max_context_chunks, 3 if synthesis_query else 2))
+
+    def add_item(index: int, item: dict) -> bool:
+        nonlocal total_chars
+        if index in used_indexes:
+            return False
+        if len(selected) >= top_k or len(selected) >= max_context_chunks:
+            return False
+        if not _can_add_context_item(selected=selected, item=item, total_chars=total_chars, max_context_chars=max_context_chars):
+            return False
+        selected.append(item)
+        used_indexes.add(index)
+        per_file_counts[item['file_id']] += 1
+        selected_chunk_indexes.setdefault(item['file_id'], []).append(int(item['chunk_index']))
+        total_chars += len(item.get('text', ''))
+        return True
 
     for index, item in enumerate(items):
         if len(selected) >= target_diverse_count:
             break
         if per_file_counts[item['file_id']] >= 1:
             continue
-        if not _can_add_context_item(selected=selected, item=item, total_chars=total_chars, max_context_chars=max_context_chars):
-            continue
-        selected.append(item)
-        used_indexes.add(index)
-        per_file_counts[item['file_id']] += 1
-        total_chars += len(item.get('text', ''))
+        add_item(index, item)
 
     for index, item in enumerate(items):
-        if index in used_indexes:
-            continue
         if len(selected) >= top_k or len(selected) >= max_context_chunks:
             break
+        if index in used_indexes:
+            continue
+        if per_file_counts[item['file_id']] >= (3 if synthesis_query else 2):
+            continue
+        if synthesis_query and per_file_counts[item['file_id']] == 0:
+            add_item(index, item)
+            continue
+        if _is_adjacent_support(item=item, selected_chunk_indexes=selected_chunk_indexes):
+            add_item(index, item)
+            continue
+        if float(item.get('rerank_score', 0.0)) >= 0.55 or len(item.get('retrieval_sources', [])) > 1:
+            add_item(index, item)
+
+    for index, item in enumerate(items):
+        if len(selected) >= top_k or len(selected) >= max_context_chunks:
+            break
+        if index in used_indexes:
+            continue
         if per_file_counts[item['file_id']] >= 3:
             continue
-        if not _can_add_context_item(selected=selected, item=item, total_chars=total_chars, max_context_chars=max_context_chars):
-            continue
-        selected.append(item)
-        per_file_counts[item['file_id']] += 1
-        total_chars += len(item.get('text', ''))
+        add_item(index, item)
 
     return selected
+
+
+
+def _is_synthesis_query(query: str) -> bool:
+    lowered = query.lower()
+    cues = (
+        'compare', 'difference', 'different', 'across', 'combine', 'combined', 'summarize', 'summary',
+        'analyze', 'analysis', 'relationship', 'impact', 'why', 'how', 'workflow', 'process', 'steps',
+        'risk', 'recommend', 'explain', 'together'
+    )
+    return any(cue in lowered for cue in cues)
+
+
+
+def _is_adjacent_support(*, item: dict, selected_chunk_indexes: dict[str, list[int]]) -> bool:
+    indexes = selected_chunk_indexes.get(item['file_id'], [])
+    current_index = int(item['chunk_index'])
+    return any(abs(existing - current_index) <= 2 for existing in indexes)
 
 
 
@@ -501,6 +556,7 @@ def assess_evidence(items: list[dict]) -> dict:
             'top_vector_score': 0.0,
             'top_keyword_score': 0.0,
             'max_lexical_overlap': 0.0,
+            'source_diversity': 0,
         }
 
     top_rerank_score = max(float(item.get('rerank_score', 0.0)) for item in items)

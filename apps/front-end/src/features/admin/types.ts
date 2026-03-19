@@ -396,3 +396,20 @@ export interface StreamChatEvent {
   session_id?: string;
   message_id?: string;
 }
+
+
+export interface ErrorConsoleItem {
+  timestamp: string;
+  level: string;
+  source: string;
+  message: string;
+  details?: Record<string, unknown>;
+  exception_type?: string | null;
+  exception?: string | null;
+  traceback?: string | null;
+}
+
+export interface ErrorConsoleResponse {
+  items: ErrorConsoleItem[];
+  limit: number;
+}

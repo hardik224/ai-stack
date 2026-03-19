@@ -9,52 +9,49 @@ MODE_GUIDANCE = {
     'knowledge_qa': {
         'label': 'Knowledge Q&A',
         'system': (
-            'You are AI Stack Assistant in knowledge-base question answering mode. '
-            'Answer strictly and only from the provided evidence. Never answer from general world knowledge, prior training, or assumptions. '
-            'If the evidence is partial, clearly state what is known and what remains uncertain. '
-            'If the evidence is insufficient, explicitly say that the uploaded knowledge base does not contain enough information. '
-            'Use dynamic, well-structured markdown that matches the user request and the evidence. '
-            'For direct factual questions, answer directly with a short lead and bullets only when useful. '
-            'For procedures, use steps. For summaries or comparisons, use sections only when they help clarity. '
-            'Use inline citations like [S1], [S2] that exactly match the provided source labels. '
+            'You are AI Stack Assistant. Respond like a capable, helpful assistant, not like a search engine. '
+            'Use the provided evidence as your ground truth and answer naturally in a direct, useful way. '
+            'Start with the answer, then explain only what is needed. '
+            'Synthesize across multiple files or chunks when they complement each other. '
+            'Do not mention retrieval, embeddings, vector search, or internal system behavior unless the user explicitly asks. '
+            'Never invent facts or fill gaps with general knowledge when the evidence does not support them. '
+            'If the evidence is partial, explain what is known and what remains uncertain. '
+            'Use inline citations like [S1], [S2] only for supported claims. '
             'Include a Sources section only when citations are actually used. '
-            'Do not cite any source that is not in the provided evidence. Keep the answer concise, operational, and precise.'
+            'Keep the answer concise, human, and operational.'
         ),
         'instructions': [
-            'Answer only from the evidence above.',
-            'Never use general knowledge if the evidence does not support the answer.',
-            'If the answer is not present in the evidence, say the knowledge base does not contain enough information.',
-            'Use markdown formatting naturally when it improves clarity; do not force the same section headings every time.',
+            'Answer only from the evidence and conversation context provided below.',
+            'Give the direct answer first instead of narrating the search process.',
+            'When the answer spans multiple chunks or files, combine them into one coherent answer instead of replying chunk by chunk.',
+            'Reconcile related evidence from multiple files when they answer different parts of the question.',
+            'Use markdown naturally when it helps clarity, but do not force the same section headings every time.',
             'Cite supported claims inline with [S#].',
             'Include a Sources section only when you cite evidence.',
             'If evidence is incomplete, add a short ## Uncertainty section.',
-            'Prefer direct operational guidance for SOPs, product docs, and internal manuals.',
-            'Use source filenames as helpful context when identifying where evidence came from or distinguishing similarly named APIs, reports, or documents.',
+            'Prefer practical language for SOPs, product docs, internal manuals, and API references.',
+            'Use source filenames as helpful context when they clarify which document a fact came from.',
         ],
     },
     'analysis': {
         'label': 'Analysis',
         'system': (
             'You are AI Stack Assistant in analysis mode. '
-            'Reason carefully over the provided evidence from PDFs, CSV rows, Excel sheets, and documentation. '
-            'You may synthesize across multiple sources, but every factual claim, trend, comparison, or calculation must be grounded in the retrieved evidence. '
+            'Think like a strong analytical assistant: combine, compare, summarize, and explain patterns across the provided evidence. '
+            'Every factual claim, calculation, trend, comparison, or recommendation must stay grounded in the retrieved evidence. '
             'Do not invent missing numbers, missing business logic, or fill gaps with general knowledge. '
             'If the evidence is partial, explain what can be concluded and what cannot be concluded yet. '
-            'If the evidence is insufficient, say that the uploaded knowledge base does not contain enough information for a reliable analysis. '
-            'Use dynamic, well-structured markdown that fits the content. '
-            'Use headings, bullets, numbered lists, compact comparisons, or short sections only when they genuinely help explain the result. '
-            'Use inline citations like [S1], [S2] that exactly match the provided source labels. '
+            'Use a clear executive style: answer first, then supporting detail. '
+            'Use inline citations like [S1], [S2] only for supported claims. '
             'Include a Sources section only when citations are actually used. '
             'Keep the analysis business-friendly, explicit, and careful.'
         ),
         'instructions': [
-            'Analyze only from the evidence above.',
-            'Never use general knowledge or unsupported assumptions to complete the analysis.',
-            'If the evidence is too weak for a reliable conclusion, explicitly say so.',
-            'Combine evidence across multiple files when useful.',
+            'Analyze only from the evidence and conversation context provided below.',
+            'Synthesize evidence from different files into one answer when they complement each other.',
+            'Show comparisons, trends, exceptions, risks, or implications only when grounded in the evidence.',
             'Use markdown structure naturally; do not force the same section layout for every answer.',
             'Cite supported findings inline with [S#].',
-            'Show comparisons, trends, exceptions, or risk points only when grounded in the evidence.',
             'Use source filenames and sheet/page/row hints when they help distinguish evidence from different uploaded files.',
             'If data is incomplete for a full conclusion, explicitly state the gap in ## Uncertainty.',
         ],
@@ -62,23 +59,22 @@ MODE_GUIDANCE = {
 }
 
 
-
 def build_chat_prompt(*, question: str, context_items: list[dict], history_messages: list[dict], mode: str) -> list[dict[str, str]]:
     guidance = MODE_GUIDANCE.get(mode, MODE_GUIDANCE['knowledge_qa'])
     context_block = format_context_block(context_items)
+    evidence_overview = build_evidence_overview(context_items)
+    conversation_context = build_conversation_context(history_messages)
     messages: list[dict[str, str]] = [{'role': 'system', 'content': guidance['system']}]
-
-    for message in history_messages:
-        role = message.get('role')
-        if role not in {'user', 'assistant'}:
-            continue
-        messages.append({'role': role, 'content': message.get('content', '')})
 
     instruction_lines = '\n'.join(f'- {line}' for line in guidance['instructions'])
     user_prompt = (
         f"Mode: {guidance['label']}\n\n"
-        'Question:\n'
+        'Current question:\n'
         f'{question.strip()}\n\n'
+        'Conversation context:\n'
+        f'{conversation_context}\n\n'
+        'Evidence overview:\n'
+        f'{evidence_overview}\n\n'
         'Evidence:\n'
         f'{context_block}\n\n'
         'Instructions:\n'
@@ -86,6 +82,25 @@ def build_chat_prompt(*, question: str, context_items: list[dict], history_messa
     )
     messages.append({'role': 'user', 'content': user_prompt})
     return messages
+
+
+
+def build_conversation_context(history_messages: list[dict[str, Any]]) -> str:
+    if not history_messages:
+        return '- No prior conversation context.'
+
+    lines = []
+    for message in history_messages[-6:]:
+        role = message.get('role')
+        if role not in {'user', 'assistant'}:
+            continue
+        content = ' '.join((message.get('content') or '').split())
+        if not content:
+            continue
+        content = content[:280]
+        prefix = 'User' if role == 'user' else 'Assistant'
+        lines.append(f'- {prefix}: {content}')
+    return '\n'.join(lines) if lines else '- No prior conversation context.'
 
 
 
@@ -99,20 +114,48 @@ def format_context_block(context_items: list[dict[str, Any]]) -> str:
             location.append(f"row {item['row_number']}")
         location_text = ', '.join(location) if location else 'location unavailable'
         blocks.append(
-            f"[{item['citation_label']}] file={item['filename']} file_id={item['file_id']} chunk_id={item['chunk_id']} ({location_text})\n{item['text']}"
+            f"[{item['citation_label']}] source file: {item['filename']} | source type: {item.get('source_type') or 'document'} | {location_text}\n{item['text']}"
         )
     return '\n\n'.join(blocks)
+
+
+
+def build_evidence_overview(context_items: list[dict[str, Any]]) -> str:
+    if not context_items:
+        return '- No grounded evidence retrieved.'
+
+    file_map: dict[str, dict[str, Any]] = {}
+    for item in context_items:
+        key = str(item.get('file_id') or item.get('filename'))
+        source_entry = file_map.setdefault(
+            key,
+            {
+                'filename': item.get('filename') or 'Unknown file',
+                'source_type': item.get('source_type') or 'document',
+                'labels': [],
+            },
+        )
+        source_entry['labels'].append(item['citation_label'])
+
+    lines = []
+    for source in file_map.values():
+        labels = ', '.join(dict.fromkeys(source['labels']))
+        lines.append(f"- {source['filename']} ({source['source_type']}): evidence labels {labels}")
+    return '\n'.join(lines)
 
 
 
 def build_insufficient_evidence_markdown(*, question: str, mode: str) -> str:
     if mode == 'analysis':
         return (
-            "I don't have that information about this at the moment "
+            "I couldn't find enough information in your uploaded files to give a reliable analysis. "
+            'Please upload a more relevant file or ask a more specific question.'
         )
     return (
         "I couldn't find that in your uploaded files. "
+        'Please upload a more relevant document or ask in a more specific way.'
     )
+
 
 
 def suggest_session_title(message: str) -> str:

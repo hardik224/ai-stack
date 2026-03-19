@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Activity, BookCopy, Boxes, Bot, ChevronRight, Cpu, DatabaseZap, LayoutDashboard, LogOut, MessageSquareText, Upload, Users } from 'lucide-react';
+import { Activity, BookCopy, Boxes, Bot, ChevronRight, Cpu, DatabaseZap, LayoutDashboard, LogOut, MessageSquareText, TerminalSquare, Upload, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo } from 'react';
@@ -23,6 +23,7 @@ const NAV_ITEMS: Record<UserRole, Array<{ href: string; label: string; icon: Rea
     { href: '/chats', label: 'Chats', icon: MessageSquareText },
     { href: '/collections', label: 'Collections', icon: BookCopy },
     { href: '/models', label: 'Models', icon: Cpu },
+    { href: '/console', label: 'Console', icon: TerminalSquare },
   ],
   internal_user: [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },

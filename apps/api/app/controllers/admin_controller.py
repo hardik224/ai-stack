@@ -126,3 +126,8 @@ def delete_chats(session_ids: list[UUID], current_user: dict):
 
 def delete_collections(collection_ids: list[UUID], current_user: dict):
     return admin_service.delete_collections(collection_ids=collection_ids, current_user=current_user)
+
+
+
+def get_error_console(limit: int):
+    return admin_service.get_error_console(limit=limit)
