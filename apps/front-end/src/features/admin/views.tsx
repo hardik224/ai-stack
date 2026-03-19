@@ -466,7 +466,6 @@ function UsersView() {
             </Card>
           ))}
         </div>
-        <div className="mt-5 rounded-2xl border border-amber-300/15 bg-amber-400/8 p-4 text-sm leading-7 text-amber-50/90">Current backend gap: existing APIs support role selection during creation, but not editing an existing user role. The portal surfaces that clearly instead of pretending updates will persist.</div>
       </Card>
       <Card>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -548,8 +547,8 @@ function UserDetailView({ id }: { id: string }) {
               </Card>
               <Card>
                 <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Role and access management</p>
-                <h3 className="mt-3 text-xl font-semibold text-white">Read-only until backend role update API exists</h3>
-                <p className="mt-3 text-sm leading-7 text-slate-400">This portal shows the user's current role clearly, but avoids fake controls. The current backend only supports role assignment while creating a user.</p>
+                <h3 className="mt-3 text-xl font-semibold text-white">Role and access snapshot</h3>
+                <p className="mt-3 text-sm leading-7 text-slate-400">Review this user's current role alongside assistant usage and response reliability metrics.</p>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <Card className="bg-white/4 p-4"><p className="text-sm text-slate-400">Assistant messages</p><p className="mt-2 text-2xl font-semibold text-white">{formatNumber(query.data.assistant_message_count)}</p></Card>
                   <Card className="bg-white/4 p-4"><p className="text-sm text-slate-400">Failed assistant replies</p><p className="mt-2 text-2xl font-semibold text-white">{formatNumber(query.data.failed_assistant_message_count)}</p></Card>

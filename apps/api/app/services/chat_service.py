@@ -474,33 +474,40 @@ def _chat_event_stream(*, payload, current_identity: dict):
             'cache': cache_state,
         }
 
+        final_status = 'failed' if generation_mode == 'insufficient_evidence' else 'completed'
+        final_error_message = 'Insufficient evidence in the uploaded knowledge base.' if generation_mode == 'insufficient_evidence' else None
+
         chat_model.update_chat_message(
             message_id=assistant_message_id,
             content=final_content,
             token_count=_estimate_token_count(final_content),
             metadata=metadata,
-            status='completed',
-            error_message=None,
+            status=final_status,
+            error_message=final_error_message,
         )
         if answer_citations:
             citation_service.persist_sources(message_id=assistant_message_id, citations=retrieval['items'])
 
+        session_metadata = {
+            'last_assistant_message_id': str(assistant_message_id),
+            'last_total_ms': total_ms,
+            'last_retrieval_selected_count': retrieval['selected_count'],
+            'last_mode': mode,
+        }
+        if final_status == 'failed':
+            session_metadata['last_failed_message_id'] = str(assistant_message_id)
+
         chat_model.touch_session(
             session_id=session_id,
             collection_id=effective_collection_id,
-            metadata={
-                'last_assistant_message_id': str(assistant_message_id),
-                'last_total_ms': total_ms,
-                'last_retrieval_selected_count': retrieval['selected_count'],
-                'last_mode': mode,
-            },
+            metadata=session_metadata,
         )
         record_activity(
             actor_user_id=UUID(str(current_identity['id'])),
-            activity_type='chat.message.assistant.completed',
+            activity_type='chat.message.assistant.failed' if final_status == 'failed' else 'chat.message.assistant.completed',
             target_type='chat_message',
             target_id=assistant_message_id,
-            description='Assistant completed a grounded answer.',
+            description='Assistant could not answer from grounded evidence.' if final_status == 'failed' else 'Assistant completed a grounded answer.',
             visibility='foreground',
             metadata={
                 'session_id': str(session_id),
@@ -523,7 +530,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
         )
         yield format_sse_event(
             'message.saved',
-            {'message_id': str(assistant_message_id), 'status': 'completed'},
+            {'message_id': str(assistant_message_id), 'status': final_status},
             session_id=str(session_id),
             message_id=str(assistant_message_id),
         )
@@ -532,7 +539,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
             {
                 'message_id': str(assistant_message_id),
                 'mode': mode,
-                'status': 'completed',
+                'status': final_status,
                 'citation_count': len(answer_citations),
                 'timings': timings,
                 'generation_mode': generation_mode,
