@@ -247,6 +247,10 @@ export async function uploadFile(token: string, payload: { file: File }) {
   return requestForm<{ file: UploadItem; job: { id: string; status: string }; message: string; collection?: { id: string; name: string; auto_assigned: boolean; created_now: boolean } }>('/upload', formData, token);
 }
 
+export async function uploadFiles(token: string, files: File[]) {
+  return Promise.all(files.map((file) => uploadFile(token, { file })));
+}
+
 export async function deleteUsers(token: string, ids: string[]) {
   return requestJson<DeleteResponse>('/admin/users/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }, token);
 }

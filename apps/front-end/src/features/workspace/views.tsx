@@ -8,7 +8,7 @@ import ReactMarkdown from 'react-markdown';
 
 import { useAuth } from '@/components/auth-provider';
 import { Card, EmptyState, ErrorState, MetricCard, SearchInput, SectionHeading, SkeletonCard, StatusBadge, TableShell, formatBytes, formatDateTime, formatNumber } from '@/components/ui';
-import { fetchChatSessionDetail, fetchChatSessions, fetchFiles, fetchWorkspaceSummary, streamChat, uploadFile } from '@/features/admin/data';
+import { fetchChatSessionDetail, fetchChatSessions, fetchFiles, fetchWorkspaceSummary, streamChat, uploadFiles } from '@/features/admin/data';
 import type { ChatMessage, ChatMode, ChatSource, StreamChatEvent, UploadItem } from '@/features/admin/types';
 import { cn } from '@/lib/utils';
 
@@ -60,12 +60,13 @@ function SharedUploadDialog() {
   const token = useToken();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragActive, setDragActive] = useState(false);
 
   const mutation = useMutation({
     mutationFn: () => {
-      if (!file) throw new Error('A PDF or CSV file is required.');
-      return uploadFile(token, { file });
+      if (!files.length) throw new Error('At least one PDF or CSV file is required.');
+      return uploadFiles(token, files);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-summary'] });
@@ -73,27 +74,80 @@ function SharedUploadDialog() {
       queryClient.invalidateQueries({ queryKey: ['uploads'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       setOpen(false);
-      setFile(null);
+      setFiles([]);
+      setDragActive(false);
     },
   });
 
+  const addFiles = (incoming: FileList | File[] | null | undefined) => {
+    if (!incoming) return;
+    const next = Array.from(incoming).filter((file) => /\.(pdf|csv)$/i.test(file.name));
+    setFiles((current) => {
+      const merged = [...current];
+      for (const file of next) {
+        if (!merged.some((item) => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified)) {
+          merged.push(file);
+        }
+      }
+      return merged
+    });
+  };
+
   return (
     <>
-      <button onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-5 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/15"><UploadCloud className="size-4" />Upload file</button>
+      <button onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-5 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/15"><UploadCloud className="size-4" />Upload files</button>
       {open ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-md">
           <Card className="w-full max-w-2xl p-6">
-            <SectionHeading eyebrow="New upload" title="Add a source file" description="Upload a PDF or CSV and the system will place it into the right managed knowledge space automatically." />
+            <SectionHeading eyebrow="New upload" title="Add source files" description="Upload one or more PDFs or CSVs and the system will place them into the right managed knowledge space automatically." />
             <div className="mt-6 grid gap-4">
               <div className="rounded-2xl border border-cyan-300/10 bg-cyan-400/5 px-4 py-4 text-sm leading-6 text-slate-300">
-                You only need to upload the document. The platform automatically routes it into the proper managed collection and starts ingestion in the background.
+                Drag and drop files here or browse from your device. The platform routes them automatically and starts ingestion in the background.
               </div>
-              <input type="file" accept=".pdf,.csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} className="rounded-2xl border border-dashed border-white/10 bg-slate-950/70 px-4 py-6 text-sm text-slate-300 outline-none" />
+              <label
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDragActive(true);
+                }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragActive(false);
+                  addFiles(event.dataTransfer.files);
+                }}
+                className={cn(
+                  'flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border border-dashed px-5 py-8 text-center transition',
+                  dragActive ? 'border-cyan-300/40 bg-cyan-400/10 text-cyan-100' : 'border-white/10 bg-slate-950/70 text-slate-300 hover:bg-white/5',
+                )}
+              >
+                <UploadCloud className="size-6" />
+                <div>
+                  <p className="text-sm font-medium text-white">Drag and drop PDF or CSV files</p>
+                  <p className="mt-1 text-xs text-slate-400">You can select and upload multiple files at the same time.</p>
+                </div>
+                <input type="file" accept=".pdf,.csv" multiple onChange={(event) => addFiles(event.target.files)} className="hidden" />
+              </label>
+              {files.length ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-white">{files.length} file(s) ready</p>
+                    <button onClick={() => setFiles([])} className="text-xs text-slate-400 transition hover:text-white">Clear all</button>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {files.map((file) => (
+                      <div key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-slate-300">
+                        <span className="truncate">{file.name}</span>
+                        <span className="shrink-0 text-xs text-slate-500">{formatBytes(file.size)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
             {mutation.error ? <p className="mt-4 text-sm text-rose-300">{mutation.error.message}</p> : null}
             <div className="mt-6 flex items-center justify-end gap-3">
-              <button onClick={() => setOpen(false)} className="rounded-full border border-white/10 px-5 py-3 text-sm text-slate-300 transition hover:bg-white/5">Cancel</button>
-              <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !file} className="rounded-full bg-gradient-to-r from-cyan-400 to-indigo-400 px-5 py-3 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-60">{mutation.isPending ? 'Uploading...' : 'Start upload'}</button>
+              <button onClick={() => { setOpen(false); setFiles([]); setDragActive(false); }} className="rounded-full border border-white/10 px-5 py-3 text-sm text-slate-300 transition hover:bg-white/5">Cancel</button>
+              <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !files.length} className="rounded-full bg-gradient-to-r from-cyan-400 to-indigo-400 px-5 py-3 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-60">{mutation.isPending ? `Uploading ${files.length} file(s)...` : `Start upload${files.length > 1 ? 's' : ''}`}</button>
             </div>
           </Card>
         </div>
