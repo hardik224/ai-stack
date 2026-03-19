@@ -102,7 +102,16 @@ function SharedUploadDialog() {
   );
 }
 
+function normalizeAnswerContent(content: string) {
+  return content.replace(/(\[S\d+\])(\s*[.,]?\s*\[S\d+\])+/g, (match) => {
+    const labels = match.match(/\[S\d+\]/g) ?? [];
+    return labels.filter((label, index) => index === 0 || label !== labels[index - 1]).join(' ');
+  });
+}
+
 function MarkdownAnswer({ content }: { content: string }) {
+  const normalizedContent = normalizeAnswerContent(content);
+
   return (
     <div className="space-y-4 text-[15px] leading-8 text-slate-100">
       <ReactMarkdown
@@ -119,7 +128,7 @@ function MarkdownAnswer({ content }: { content: string }) {
           blockquote: ({ children }) => <blockquote className="border-l-2 border-cyan-300/40 pl-4 italic text-slate-300">{children}</blockquote>,
         }}
       >
-        {content}
+        {normalizedContent}
       </ReactMarkdown>
     </div>
   );
@@ -127,6 +136,21 @@ function MarkdownAnswer({ content }: { content: string }) {
 
 function MessageBubble({ message }: { message: LocalChatMessage }) {
   const isUser = message.role === 'user';
+  const citedLabels = new Set(Array.from((message.content || '').matchAll(/\[(S\d+)\]/g)).map((match) => match[1]));
+  const visibleSources = !isUser && message.sources?.length
+    ? Array.from(
+        message.sources
+          .filter((source) => citedLabels.has(source.citation_label))
+          .reduce((map, source) => {
+            const key = source.file_id || source.file_name || source.chunk_id;
+            if (!map.has(key)) {
+              map.set(key, source);
+            }
+            return map;
+          }, new Map<string, ChatSource>())
+          .values(),
+      )
+    : [];
 
   return (
     <div className={cn('mx-auto flex w-full max-w-[880px]', isUser ? 'justify-end' : 'justify-start')}>
@@ -153,15 +177,13 @@ function MessageBubble({ message }: { message: LocalChatMessage }) {
           <MarkdownAnswer content={message.content || '...'} />
         )}
 
-        {!isUser && message.sources?.length ? (
+        {!isUser && visibleSources.length ? (
           <div className="mt-6 border-t border-white/8 pt-4">
             <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Sources</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {message.sources.map((source) => (
-                <div key={`${message.id}-${source.citation_label}-${source.chunk_id}`} className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200">
+              {visibleSources.map((source) => (
+                <div key={`${message.id}-${source.file_id || source.file_name || source.chunk_id}`} className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200">
                   <span className="font-semibold text-white">[{source.citation_label}]</span> {source.file_name || 'Source'}
-                  {source.page_number ? ` | p.${source.page_number}` : ''}
-                  {source.row_number ? ` | row ${source.row_number}` : ''}
                 </div>
               ))}
             </div>
@@ -753,5 +775,7 @@ export function WorkspaceSectionIndexView({ section }: { section: string }) {
 export function WorkspaceSectionDetailView() {
   return <EmptyState title="No detail screen here" description="This workspace route does not currently expose a dedicated detail view." />;
 }
+
+
 
 
