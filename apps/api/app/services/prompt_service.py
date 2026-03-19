@@ -108,20 +108,11 @@ def format_context_block(context_items: list[dict[str, Any]]) -> str:
 def build_insufficient_evidence_markdown(*, question: str, mode: str) -> str:
     if mode == 'analysis':
         return (
-            '## Not enough evidence for a reliable analysis\n\n'
-            'I searched the uploaded knowledge base, but the available evidence is too limited to produce a trustworthy grounded analysis.\n\n'
-            f'- Request: **{question.strip()}**\n'
-            '- I am avoiding unsupported assumptions or general knowledge.\n'
-            '- Upload more relevant reports or narrow the question, and I can try again with grounded evidence.\n'
+            "I don't have that information about this at the moment "
         )
     return (
-        '## Not enough grounded information\n\n'
-        'I searched the uploaded knowledge base, but I could not find enough reliable evidence to answer this confidently.\n\n'
-        f'- Question: **{question.strip()}**\n'
-        '- I am not filling the gaps with general knowledge or assumptions.\n'
-        '- Try uploading a more relevant document or asking with more specific terms.\n'
+        "I couldn't find that in your uploaded files. "
     )
-
 
 
 def suggest_session_title(message: str) -> str:

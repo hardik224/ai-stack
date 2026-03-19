@@ -475,7 +475,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
         }
 
         final_status = 'failed' if generation_mode == 'insufficient_evidence' else 'completed'
-        final_error_message = 'Insufficient evidence in the uploaded knowledge base.' if generation_mode == 'insufficient_evidence' else None
+        final_error_message = "I couldn't find enough information in the uploaded files." if generation_mode == 'insufficient_evidence' else None
 
         chat_model.update_chat_message(
             message_id=assistant_message_id,
