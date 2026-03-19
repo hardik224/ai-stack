@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, FileText, MessageSquare, Plus, SendHorizonal, Sparkles, UploadCloud } from 'lucide-react';
+import { Bot, FileText, MessageSquare, Plus, SendHorizontal, Sparkles, UploadCloud } from 'lucide-react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 
@@ -175,6 +175,7 @@ function AssistantView() {
   const [streaming, setStreaming] = useState(false);
   const [streamStatus, setStreamStatus] = useState('');
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [sessionSearch, setSessionSearch] = useState('');
 
   const sessionsQuery = useQuery({
     queryKey: ['chat-sessions'],
@@ -203,6 +204,10 @@ function AssistantView() {
   }, [messages, streamStatus]);
 
   const currentSession = sessionsQuery.data?.items.find((item) => item.id === selectedSessionId) ?? detailQuery.data?.session ?? null;
+  const filteredSessions = useMemo(
+    () => (sessionsQuery.data?.items ?? []).filter((session) => [session.title, session.last_message_content].join(' ').toLowerCase().includes(sessionSearch.toLowerCase())),
+    [sessionSearch, sessionsQuery.data?.items],
+  );
 
   function startNewChat() {
     setSelectedSessionId(null);
@@ -306,126 +311,119 @@ function AssistantView() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
-      <Card className="overflow-hidden p-0">
-        <div className="border-b border-white/10 bg-gradient-to-br from-cyan-400/10 via-transparent to-indigo-400/10 px-5 py-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-cyan-200/70">Assistant</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">Chat workspace</h2>
-            </div>
-            <button onClick={startNewChat} className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-400/15"><Plus className="size-4" />New</button>
+    <div className="grid min-h-[78vh] gap-0 overflow-hidden rounded-[32px] border border-white/10 bg-[#111214]/90 shadow-[0_50px_160px_-70px_rgba(15,23,42,0.98)] xl:grid-cols-[320px_minmax(0,1fr)]">
+      <aside className="border-r border-white/8 bg-[#17181a]/92">
+        <div className="border-b border-white/8 px-4 py-4">
+          <button onClick={startNewChat} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10"><Plus className="size-4" />New chat</button>
+          <div className="mt-3">
+            <SearchInput value={sessionSearch} onChange={setSessionSearch} placeholder="Search chats" />
           </div>
-          <p className="mt-3 text-sm leading-7 text-slate-400">Ask grounded questions, review prior sessions, and stream structured answers with citations.</p>
         </div>
-        <div className="max-h-[72vh] overflow-y-auto p-4">
+        <div className="max-h-[calc(78vh-96px)] overflow-y-auto p-3">
           {sessionsQuery.isLoading ? (
             <div className="space-y-3">
               <SkeletonCard />
               <SkeletonCard />
             </div>
           ) : sessionsQuery.error ? (
-            <ErrorState title="Could not load chat sessions" description={sessionsQuery.error instanceof Error ? sessionsQuery.error.message : 'Unknown error'} onRetry={() => sessionsQuery.refetch()} />
-          ) : sessionsQuery.data?.items?.length ? (
-            <div className="space-y-3">
-              {sessionsQuery.data.items.map((session) => {
+            <ErrorState title="Could not load chats" description={sessionsQuery.error instanceof Error ? sessionsQuery.error.message : 'Unknown error'} onRetry={() => sessionsQuery.refetch()} />
+          ) : filteredSessions.length ? (
+            <div className="space-y-2">
+              {filteredSessions.map((session) => {
                 const active = session.id === selectedSessionId;
                 return (
-                  <button key={session.id} onClick={() => setSelectedSessionId(session.id)} className={cn('w-full rounded-3xl border p-4 text-left transition', active ? 'border-cyan-300/20 bg-cyan-400/8 shadow-[0_18px_40px_-30px_rgba(34,211,238,0.5)]' : 'border-white/8 bg-white/4 hover:bg-white/7')}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-white">{session.title || 'Untitled chat'}</p>
-                        <p className="mt-2 line-clamp-2 text-xs leading-6 text-slate-400">{session.last_message_content || 'Ready for the next grounded answer.'}</p>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
-                      <StatusBadge value={session.last_message_status || session.status} />
-                      <span>{formatDateTime(session.updated_at)}</span>
-                    </div>
+                  <button key={session.id} onClick={() => setSelectedSessionId(session.id)} className={cn('w-full rounded-2xl px-4 py-3 text-left transition', active ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/6 hover:text-white')}>
+                    <p className="truncate text-sm font-medium">{session.title || 'Untitled chat'}</p>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{session.last_message_content || 'Ready for the next grounded answer.'}</p>
                   </button>
                 );
               })}
             </div>
           ) : (
-            <EmptyState title="No chat sessions yet" description="Start a new conversation to see grounded answers stream into this workspace." />
+            <EmptyState title="No chats found" description="Start a new conversation or try another search term." />
           )}
         </div>
-      </Card>
+      </aside>
 
-      <div className="flex min-h-[72vh] flex-col overflow-hidden rounded-[32px] border border-white/10 bg-slate-950/45 shadow-[0_45px_120px_-55px_rgba(15,23,42,0.98)] backdrop-blur-xl">
-        <div className="border-b border-white/10 px-6 py-5">
+      <section className="flex min-h-[78vh] flex-col bg-[#212121]">
+        <div className="border-b border-white/8 px-6 py-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Conversation</p>
-              <h3 className="mt-2 text-2xl font-semibold text-white">{currentSession?.title || 'New chat'}</h3>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-500">AI Stack Assistant</p>
+              <h2 className="mt-2 text-xl font-semibold text-white">{currentSession?.title || 'New chat'}</h2>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {user?.role !== 'user' ? (
                 <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
                   {(['knowledge_qa', 'analysis'] as ChatMode[]).map((option) => (
-                    <button key={option} onClick={() => setMode(option)} className={cn('rounded-full px-4 py-2 text-sm transition', mode === option ? 'bg-cyan-400/12 text-cyan-100' : 'text-slate-400 hover:text-white')}>
+                    <button key={option} onClick={() => setMode(option)} className={cn('rounded-full px-4 py-2 text-sm transition', mode === option ? 'bg-white text-slate-950' : 'text-slate-400 hover:text-white')}>
                       {option === 'knowledge_qa' ? 'Knowledge Q&A' : 'Analysis'}
                     </button>
                   ))}
                 </div>
-              ) : (
-                <StatusBadge value="knowledge_qa" />
-              )}
+              ) : null}
+              <StatusBadge value={streaming ? 'processing' : 'active'} />
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-6">
-          {detailQuery.isLoading && selectedSessionId && !messages.length ? (
-            <div className="space-y-4">
-              <SkeletonCard />
-              <SkeletonCard />
-            </div>
-          ) : null}
+        <div className="flex-1 overflow-y-auto px-6 py-8">
+          <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
+            {detailQuery.isLoading && selectedSessionId && !messages.length ? (
+              <div className="space-y-4">
+                <SkeletonCard />
+                <SkeletonCard />
+              </div>
+            ) : null}
 
-          {!messages.length && !selectedSessionId ? (
-            <div className="flex h-full items-center justify-center">
-              <EmptyState title="Start a grounded conversation" description="Ask a question in natural language and the assistant will search your indexed knowledge base, stream the answer, and attach citations." />
-            </div>
-          ) : null}
+            {!messages.length && !selectedSessionId ? (
+              <div className="flex min-h-[46vh] items-center justify-center">
+                <div className="max-w-2xl space-y-5 text-center">
+                  <div className="mx-auto inline-flex rounded-3xl border border-white/10 bg-white/5 p-4 text-slate-200"><Bot className="size-7" /></div>
+                  <h3 className="text-4xl font-semibold tracking-tight text-white">What can I help you find?</h3>
+                  <p className="text-base leading-8 text-slate-400">Ask grounded questions in natural language. The assistant searches your uploaded knowledge base, streams the answer live, and shows citations for every supported claim.</p>
+                </div>
+              </div>
+            ) : null}
 
-          <div className="space-y-5">
             {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
             <div ref={scrollRef} />
           </div>
         </div>
 
-        <div className="border-t border-white/10 px-5 py-5">
-          <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-slate-400">
-            {streamStatus ? <span>{streamStatus}</span> : <span>Responses stream live with markdown formatting and citations.</span>}
-            {streamError ? <span className="text-rose-300">{streamError}</span> : null}
-          </div>
-          <div className="rounded-[28px] border border-white/10 bg-white/5 p-3">
-            <textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleSend();
-                }
-              }}
-              placeholder={user?.role === 'user' ? 'Ask a grounded question about your knowledge base...' : 'Ask a grounded question, summarize documents, or analyze uploaded reports...'}
-              className="min-h-28 w-full resize-none bg-transparent px-2 py-2 text-[15px] leading-7 text-white outline-none placeholder:text-slate-500"
-            />
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-slate-500">
-                <Sparkles className="size-4" />
-                Markdown answers | Citations | Live stream
+        <div className="border-t border-white/8 bg-[#212121] px-6 py-5">
+          <div className="mx-auto w-full max-w-4xl">
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-slate-400">
+              {streamStatus ? <span>{streamStatus}</span> : <span>Live SSE streaming | Structured markdown | Citation-aware answers</span>}
+              {streamError ? <span className="text-rose-300">{streamError}</span> : null}
+            </div>
+            <div className="rounded-[28px] border border-white/10 bg-[#2a2a2a] p-3 shadow-[0_20px_50px_-35px_rgba(0,0,0,0.9)]">
+              <textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    void handleSend();
+                  }
+                }}
+                placeholder={user?.role === 'user' ? 'Ask anything from your uploaded knowledge base...' : 'Ask a grounded question, summarize documents, or analyze uploaded reports...'}
+                className="min-h-28 w-full resize-none bg-transparent px-3 py-3 text-[15px] leading-7 text-white outline-none placeholder:text-slate-500"
+              />
+              <div className="mt-3 flex items-center justify-between gap-3 px-2 pb-1">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-slate-500">
+                  <Sparkles className="size-4" />
+                  Fast stream experience
+                </div>
+                <button onClick={() => void handleSend()} disabled={streaming || !draft.trim()} className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60">
+                  <SendHorizontal className="size-4" />
+                  {streaming ? 'Streaming...' : 'Send'}
+                </button>
               </div>
-              <button onClick={() => void handleSend()} disabled={streaming || !draft.trim()} className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-400 px-5 py-3 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-60">
-                <SendHorizonal className="size-4" />
-                {streaming ? 'Streaming...' : 'Send'}
-              </button>
             </div>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

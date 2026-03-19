@@ -76,6 +76,7 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   }, [currentSection, navItems, ready, router, user]);
 
   const headerLabel = useMemo(() => pathLabel(pathname), [pathname]);
+  const isAssistantRoute = pathname === '/assistant' || pathname.startsWith('/assistant/');
 
   if (!ready || !user) {
     return (
@@ -143,7 +144,7 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
           </motion.div>
         </aside>
 
-        <main className="flex-1 pb-10">
+        <main className={cn('flex-1', isAssistantRoute ? 'pb-0' : 'pb-10')}>
           <div className="mb-4 overflow-x-auto lg:hidden">
             <div className="flex min-w-max gap-2 rounded-3xl border border-white/10 bg-slate-950/55 p-2 backdrop-blur-xl">
               {navItems.map(({ href, label, icon: Icon }) => {
@@ -164,14 +165,16 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
               })}
             </div>
           </div>
-          <div className="sticky top-0 z-30 mb-6 rounded-3xl border border-white/10 bg-slate-950/55 px-5 py-4 backdrop-blur-xl">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Operations</p>
-                <h2 className="mt-2 text-2xl font-semibold text-white">{headerLabel}</h2>
+          {isAssistantRoute ? null : (
+            <div className="sticky top-0 z-30 mb-6 rounded-3xl border border-white/10 bg-slate-950/55 px-5 py-4 backdrop-blur-xl">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Operations</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">{headerLabel}</h2>
+                </div>
               </div>
             </div>
-          </div>
+          )}
           {children}
         </main>
       </div>
