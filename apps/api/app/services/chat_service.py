@@ -594,9 +594,10 @@ def _chat_event_stream(*, payload, current_identity: dict):
                     exc=exc,
                 )
                 generation_mode = 'grounded_fallback'
+                answer_citations = []
                 fallback_answer = _build_grounded_fallback_markdown(
                     question=payload.message,
-                    citations=citations,
+                    citations=answer_citations,
                     mode=mode,
                     error_message=llm_error,
                 )
@@ -795,39 +796,7 @@ def _estimate_token_count(text: str) -> int:
 
 
 def _build_grounded_fallback_markdown(*, question: str, citations: list[dict], mode: str, error_message: str | None = None) -> str:
-    heading = '## Analysis' if mode == 'analysis' else '## Evidence'
-    summary_line = 'I found grounded evidence, but the configured language model backend is not available right now.'
-    lines = [
-        '# Answer',
-        '',
-        summary_line,
-        '',
-        '## Key Points',
-        '',
-        f'- Original question: **{question.strip()}**',
-        '- The evidence below is available and cited, but a richer generated synthesis could not be completed.',
-    ]
-    if error_message:
-        lines.append('- The system automatically fell back to a citation-preserving response because the primary LLM request failed.')
-    lines.extend([
-        '',
-        heading,
-        '',
-    ])
-    for citation in citations:
-        location = []
-        if citation.get('page_number'):
-            location.append(f"page {citation['page_number']}")
-        if citation.get('row_number'):
-            location.append(f"row {citation['row_number']}")
-        location_text = ', '.join(location) if location else 'location unavailable'
-        lines.append(f"- [{citation['label']}] **{citation['filename']}** ({location_text})")
-    lines.extend(['', '## Sources', ''])
-    for citation in citations:
-        lines.append(
-            f"- [{citation['label']}] file_id=`{citation['file_id']}` chunk_id=`{citation['chunk_id']}` filename=`{citation['filename']}`"
-        )
-    return '\n'.join(lines)
+    return 'Something went wrong while generating the answer. Please contact the administrator.'
 
 
 
