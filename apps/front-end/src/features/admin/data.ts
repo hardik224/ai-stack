@@ -34,7 +34,7 @@ export class ApiError extends Error {
 }
 
 function buildUrl(path: string, query?: Record<string, string | number | boolean | undefined | null>) {
-  const url = new URL(`${API_PREFIX}${path}`, 'http://localhost');
+  const url = new URL(path, 'http://localhost');
   Object.entries(query ?? {}).forEach(([key, value]) => {
     if (value === undefined || value === null || value === '') return;
     url.searchParams.set(key, String(value));
@@ -52,7 +52,9 @@ async function requestJson<T>(path: string, init: RequestInit = {}, token?: stri
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_PREFIX}${path}`, {
+  const requestPath = path.startsWith('http') || path.startsWith(API_PREFIX) ? path : `${API_PREFIX}${path}`;
+
+  const response = await fetch(requestPath, {
     ...init,
     headers,
     cache: 'no-store',
