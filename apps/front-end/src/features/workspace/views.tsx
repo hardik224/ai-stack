@@ -644,7 +644,14 @@ function AssistantView() {
               </div>
             ) : null}
 
-            {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
+            {messages.map((message) => (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                viewerRole={user?.role}
+                onDownloadSource={(source) => void handleDownloadFile(source.file_id, source.file_name)}
+              />
+            ))}
             <div ref={scrollRef} />
           </div>
         </div>

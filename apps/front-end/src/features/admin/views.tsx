@@ -319,7 +319,14 @@ function DashboardView() {
   const uploadSummary = useQuery({ queryKey: ['upload-summary'], queryFn: () => fetchUploadSummary(token) });
   const jobSummary = useQuery({ queryKey: ['job-summary'], queryFn: () => fetchJobSummary(token) });
   const processSummary = useQuery({ queryKey: ['process-summary'], queryFn: () => fetchProcessSummary(token) });
-  const topUploaderData = (uploadSummary.data?.items ?? []).slice(0, 6);
+  const topUploaderData = (uploadSummary.data?.items ?? []).slice(0, 6).map((item) => ({
+    ...item,
+    ...getUserChartNames(item.full_name, item.email),
+  }));
+  const uploadLeaderboardData = (summary.data?.items ?? []).slice(0, 8).map((item) => ({
+    ...item,
+    ...getUserChartNames(item.full_name, item.email),
+  }));
   const jobDistribution = [
     { name: 'Queued', value: jobSummary.data?.queued_jobs ?? 0, href: '/jobs' },
     { name: 'Processing', value: jobSummary.data?.processing_jobs ?? 0, href: '/jobs' },
@@ -350,9 +357,13 @@ function DashboardView() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={topUploaderData}>
                   <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
-                  <XAxis dataKey="email" tick={{ fill: '#94a3b8', fontSize: 12 }} interval={0} angle={-20} height={70} />
+                  <XAxis dataKey="short_display_name" tick={{ fill: '#94a3b8', fontSize: 12 }} interval={0} angle={-20} height={70} />
                   <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={(value) => `${Math.round(value / 1024)} KB`} />
-                  <Tooltip cursor={{ fill: 'rgba(255,255,255,0.03)' }} contentStyle={{ background: '#020617', border: '1px solid rgba(148,163,184,0.1)', borderRadius: 18 }} />
+                  <Tooltip
+                    cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+                    contentStyle={{ background: '#020617', border: '1px solid rgba(148,163,184,0.1)', borderRadius: 18 }}
+                    labelFormatter={(_, payload) => String(payload?.[0]?.payload?.display_name ?? '')}
+                  />
                   <Bar dataKey="total_uploaded_bytes" radius={[10, 10, 0, 0]} cursor="pointer">
                     {topUploaderData.map((entry, index) => (
                       <Cell key={entry.user_id} fill={CHART_COLORS[index % CHART_COLORS.length]} className="cursor-pointer" onClick={() => router.push(`/users/${entry.user_id}`)} />
@@ -610,7 +621,7 @@ function UploadsView() {
             <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Upload leaderboard</p>
             <div className="mt-6 h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={(summary.data?.items ?? []).slice(0, 8)}>
+                <AreaChart data={uploadLeaderboardData}>
                   <defs>
                     <linearGradient id="uploadArea" x1="0" x2="0" y1="0" y2="1">
                       <stop offset="0%" stopColor="#67e8f9" stopOpacity={0.5} />
@@ -618,9 +629,12 @@ function UploadsView() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
-                  <XAxis dataKey="email" tick={{ fill: '#94a3b8', fontSize: 12 }} interval={0} angle={-20} height={70} />
+                  <XAxis dataKey="short_display_name" tick={{ fill: '#94a3b8', fontSize: 12 }} interval={0} angle={-20} height={70} />
                   <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={(value) => `${Math.round(value / 1024)} KB`} />
-                  <Tooltip contentStyle={{ background: '#020617', border: '1px solid rgba(148,163,184,0.1)', borderRadius: 18 }} />
+                  <Tooltip
+                    contentStyle={{ background: '#020617', border: '1px solid rgba(148,163,184,0.1)', borderRadius: 18 }}
+                    labelFormatter={(_, payload) => String(payload?.[0]?.payload?.display_name ?? '')}
+                  />
                   <Area type="monotone" dataKey="total_uploaded_bytes" stroke="#67e8f9" fill="url(#uploadArea)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
