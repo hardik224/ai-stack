@@ -137,9 +137,6 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
                 <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Operations</p>
                 <h2 className="mt-2 text-2xl font-semibold text-white">{headerLabel}</h2>
               </div>
-              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-                Premium dark admin experience on top of your existing API stack.
-              </div>
             </div>
           </div>
           {children}

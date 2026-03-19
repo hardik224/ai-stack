@@ -3,8 +3,9 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Activity, ArrowRight, Bot, Boxes, DatabaseZap, FileClock, Filter, FolderKanban, HardDriveDownload, MessageSquareText, ShieldCheck, UserPlus, Users } from 'lucide-react';
+import { Activity, ArrowRight, Bot, Boxes, ChevronLeft, ChevronRight, DatabaseZap, FileClock, Filter, FolderKanban, HardDriveDownload, MessageSquareText, ShieldCheck, Trash2, UploadCloud, UserPlus, Users } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Area, AreaChart } from 'recharts';
 import ReactMarkdown from 'react-markdown';
 
@@ -12,6 +13,12 @@ import { useAuth } from '@/components/auth-provider';
 import { Card, EmptyState, ErrorState, MetricCard, ProgressBar, SearchInput, SectionHeading, SkeletonCard, StatusBadge, TableShell, formatBytes, formatDateTime, formatNumber, titleize } from '@/components/ui';
 import {
   createUser,
+  deleteChats,
+  deleteCollections,
+  deleteFiles,
+  deleteJobs,
+  deleteProcesses,
+  deleteUsers,
   fetchActivity,
   fetchAdminUser,
   fetchAdminUsers,
@@ -26,11 +33,14 @@ import {
   fetchProcesses,
   fetchUploads,
   fetchUploadSummary,
+  uploadFile,
 } from '@/features/admin/data';
 import type { CreateUserPayload, UserRole } from '@/features/admin/types';
 import { cn } from '@/lib/utils';
 
 const CHART_COLORS = ['#67e8f9', '#38bdf8', '#818cf8', '#a78bfa', '#f0abfc'];
+
+const PAGE_SIZE = 20;
 
 function useToken() {
   const { token } = useAuth();
@@ -50,7 +60,7 @@ function LoadingGrid() {
   );
 }
 
-function StatGrid({ items }: { items: Array<{ title: string; value: string; helper?: string; icon: React.ReactNode; accent?: string }> }) {
+function StatGrid({ items }: { items: Array<{ title: string; value: string; helper?: string; icon: React.ReactNode; accent?: string; href?: string }> }) {
   return (
     <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
       {items.map((item) => (
@@ -85,6 +95,109 @@ function QueryBoundary({ isLoading, error, onRetry, children }: { isLoading: boo
     return <ErrorState title="Something went wrong" description={error instanceof Error ? error.message : 'Unknown request failure.'} onRetry={onRetry} />;
   }
   return <>{children}</>;
+}
+
+
+function PaginationControls({
+  page,
+  pageSize,
+  itemCount,
+  hasNext,
+  onPrevious,
+  onNext,
+}: {
+  page: number;
+  pageSize: number;
+  itemCount: number;
+  hasNext?: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  const nextAvailable = hasNext ?? itemCount >= pageSize;
+
+  return (
+    <div className="mt-5 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/4 px-4 py-3 text-sm text-slate-300">
+      <p>Page {page} | Showing {itemCount} of up to {pageSize}</p>
+      <div className="flex items-center gap-2">
+        <button onClick={onPrevious} disabled={page === 1} className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"><ChevronLeft className="size-4" />Previous</button>
+        <button onClick={onNext} disabled={!nextAvailable} className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50">Next<ChevronRight className="size-4" /></button>
+      </div>
+    </div>
+  );
+}
+
+function SelectionToolbar({
+  selectedCount,
+  resourceLabel,
+  onDelete,
+  onClear,
+}: {
+  selectedCount: number;
+  resourceLabel: string;
+  onDelete: () => void;
+  onClear: () => void;
+}) {
+  if (!selectedCount) return null;
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-300/15 bg-rose-500/8 px-4 py-3 text-sm text-rose-50">
+      <p>{selectedCount} {resourceLabel} selected</p>
+      <div className="flex items-center gap-2">
+        <button onClick={onClear} className="rounded-full border border-white/10 px-4 py-2 text-slate-200 transition hover:bg-white/5">Clear</button>
+        <button onClick={onDelete} className="inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-500/15 px-4 py-2 transition hover:bg-rose-500/20"><Trash2 className="size-4" />Delete selected</button>
+      </div>
+    </div>
+  );
+}
+
+function UploadDialog() {
+  const token = useToken();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [collectionId, setCollectionId] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const collectionsQuery = useQuery({ queryKey: ['collections-upload'], queryFn: () => fetchCollections(token), enabled: open });
+  const collections = useMemo(() => (Array.isArray(collectionsQuery.data) ? collectionsQuery.data : collectionsQuery.data?.items ?? []), [collectionsQuery.data]);
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      if (!collectionId || !file) throw new Error('Collection and file are required.');
+      return uploadFile(token, { collectionId, file });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['uploads'] });
+      queryClient.invalidateQueries({ queryKey: ['uploads-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['job-summary'] });
+      setOpen(false);
+      setCollectionId('');
+      setFile(null);
+    },
+  });
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-5 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/15"><UploadCloud className="size-4" />Upload file</button>
+      {open ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-md">
+          <Card className="w-full max-w-2xl p-6">
+            <SectionHeading eyebrow="New upload" title="Add a source file" description="Upload a PDF or CSV into an existing collection and let the current ingestion pipeline handle the rest." />
+            <div className="mt-6 grid gap-4">
+              <select value={collectionId} onChange={(event) => setCollectionId(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none">
+                <option value="">Select collection</option>
+                {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}
+              </select>
+              <input type="file" accept=".pdf,.csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} className="rounded-2xl border border-dashed border-white/10 bg-slate-950/70 px-4 py-6 text-sm text-slate-300 outline-none" />
+            </div>
+            {mutation.error ? <p className="mt-4 text-sm text-rose-300">{mutation.error.message}</p> : null}
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button onClick={() => setOpen(false)} className="rounded-full border border-white/10 px-5 py-3 text-sm text-slate-300 transition hover:bg-white/5">Cancel</button>
+              <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !collectionId || !file} className="rounded-full bg-gradient-to-r from-cyan-400 to-indigo-400 px-5 py-3 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-60">{mutation.isPending ? 'Uploading...' : 'Start upload'}</button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 function RoleSelect({ value, onChange }: { value: UserRole; onChange: (role: UserRole) => void }) {
@@ -144,20 +257,28 @@ function CreateUserDialog() {
 
 function DashboardView() {
   const token = useToken();
+  const router = useRouter();
   const dashboard = useQuery({ queryKey: ['dashboard-summary'], queryFn: () => fetchDashboardSummary(token) });
   const uploadSummary = useQuery({ queryKey: ['upload-summary'], queryFn: () => fetchUploadSummary(token) });
   const jobSummary = useQuery({ queryKey: ['job-summary'], queryFn: () => fetchJobSummary(token) });
   const processSummary = useQuery({ queryKey: ['process-summary'], queryFn: () => fetchProcessSummary(token) });
+  const topUploaderData = (uploadSummary.data?.items ?? []).slice(0, 6);
+  const jobDistribution = [
+    { name: 'Queued', value: jobSummary.data?.queued_jobs ?? 0, href: '/jobs' },
+    { name: 'Processing', value: jobSummary.data?.processing_jobs ?? 0, href: '/jobs' },
+    { name: 'Completed', value: jobSummary.data?.completed_jobs ?? 0, href: '/jobs' },
+    { name: 'Failed', value: jobSummary.data?.failed_jobs ?? 0, href: '/jobs' },
+  ];
 
   return (
     <div className="space-y-6">
       <SectionHeading eyebrow="Overview" title="Platform command center" description="Track ingestion health, user growth, chat volume, and operational pressure at a glance." />
       <QueryBoundary isLoading={dashboard.isLoading || uploadSummary.isLoading || jobSummary.isLoading || processSummary.isLoading} error={dashboard.error || uploadSummary.error || jobSummary.error || processSummary.error} onRetry={() => { dashboard.refetch(); uploadSummary.refetch(); jobSummary.refetch(); processSummary.refetch(); }}>
         <StatGrid items={[
-          { title: 'Users', value: formatNumber(dashboard.data?.total_users), helper: `${dashboard.data?.admin_users ?? 0} admins | ${dashboard.data?.internal_users ?? 0} internal`, icon: <Users className="size-5" /> },
-          { title: 'Knowledge Files', value: formatNumber(dashboard.data?.total_files), helper: formatBytes(dashboard.data?.total_uploaded_bytes), icon: <HardDriveDownload className="size-5" /> },
-          { title: 'Jobs', value: formatNumber(dashboard.data?.total_jobs), helper: `${dashboard.data?.queue_depth ?? 0} waiting in queue`, icon: <Boxes className="size-5" /> },
-          { title: 'Chats', value: formatNumber(dashboard.data?.total_chat_sessions), helper: `${dashboard.data?.total_chat_messages ?? 0} messages tracked`, icon: <Bot className="size-5" /> },
+          { title: 'Users', value: formatNumber(dashboard.data?.total_users), helper: `${dashboard.data?.admin_users ?? 0} admins | ${dashboard.data?.internal_users ?? 0} internal | ${dashboard.data?.standard_users ?? 0} standard`, icon: <Users className="size-5" />, href: '/users' },
+          { title: 'Knowledge Files', value: formatNumber(dashboard.data?.total_files), helper: `${formatBytes(dashboard.data?.total_uploaded_bytes)} stored`, icon: <HardDriveDownload className="size-5" />, href: '/uploads' },
+          { title: 'Jobs', value: formatNumber(dashboard.data?.total_jobs), helper: `${dashboard.data?.queue_depth ?? 0} waiting in queue`, icon: <Boxes className="size-5" />, href: '/jobs' },
+          { title: 'Chats', value: formatNumber(dashboard.data?.total_chat_sessions), helper: `${dashboard.data?.total_chat_messages ?? 0} messages | ${dashboard.data?.total_chat_citations ?? 0} citations`, icon: <Bot className="size-5" />, href: '/chats' },
         ]} />
         <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
           <Card>
@@ -170,14 +291,14 @@ function DashboardView() {
             </div>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={(uploadSummary.data?.items ?? []).slice(0, 6)}>
+                <BarChart data={topUploaderData}>
                   <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
                   <XAxis dataKey="email" tick={{ fill: '#94a3b8', fontSize: 12 }} interval={0} angle={-20} height={70} />
                   <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={(value) => `${Math.round(value / 1024)} KB`} />
                   <Tooltip cursor={{ fill: 'rgba(255,255,255,0.03)' }} contentStyle={{ background: '#020617', border: '1px solid rgba(148,163,184,0.1)', borderRadius: 18 }} />
-                  <Bar dataKey="total_uploaded_bytes" radius={[10, 10, 0, 0]}>
-                    {(uploadSummary.data?.items ?? []).slice(0, 6).map((entry, index) => (
-                      <Cell key={entry.user_id} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  <Bar dataKey="total_uploaded_bytes" radius={[10, 10, 0, 0]} cursor="pointer">
+                    {topUploaderData.map((entry, index) => (
+                      <Cell key={entry.user_id} fill={CHART_COLORS[index % CHART_COLORS.length]} className="cursor-pointer" onClick={() => router.push(`/users/${entry.user_id}`)} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -192,16 +313,16 @@ function DashboardView() {
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={[{ name: 'Queued', value: jobSummary.data?.queued_jobs ?? 0 }, { name: 'Processing', value: jobSummary.data?.processing_jobs ?? 0 }, { name: 'Completed', value: jobSummary.data?.completed_jobs ?? 0 }, { name: 'Failed', value: jobSummary.data?.failed_jobs ?? 0 }]} dataKey="value" innerRadius={70} outerRadius={110} paddingAngle={5}>
-                    {CHART_COLORS.map((color) => (<Cell key={color} fill={color} />))}
+                  <Pie data={jobDistribution} dataKey="value" innerRadius={70} outerRadius={110} paddingAngle={5} cursor="pointer">
+                    {jobDistribution.map((entry, index) => (<Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} className="cursor-pointer" onClick={() => router.push(entry.href)} />))}
                   </Pie>
                   <Tooltip contentStyle={{ background: '#020617', border: '1px solid rgba(148,163,184,0.1)', borderRadius: 18 }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <Card className="bg-white/4 p-4"><p className="text-sm text-slate-400">Running processes</p><p className="mt-2 text-2xl font-semibold text-white">{formatNumber(processSummary.data?.running_processes)}</p></Card>
-              <Card className="bg-white/4 p-4"><p className="text-sm text-slate-400">Queue depth</p><p className="mt-2 text-2xl font-semibold text-white">{formatNumber(processSummary.data?.queue_depth)}</p></Card>
+              <Link href="/processes" className="block"><Card className="bg-white/4 p-4 transition hover:border-cyan-300/20 hover:bg-white/8"><p className="text-sm text-slate-400">Running processes</p><p className="mt-2 text-2xl font-semibold text-white">{formatNumber(processSummary.data?.running_processes)}</p></Card></Link>
+              <Link href="/jobs" className="block"><Card className="bg-white/4 p-4 transition hover:border-cyan-300/20 hover:bg-white/8"><p className="text-sm text-slate-400">Queue depth</p><p className="mt-2 text-2xl font-semibold text-white">{formatNumber(processSummary.data?.queue_depth)}</p></Card></Link>
             </div>
           </Card>
         </div>
@@ -212,55 +333,115 @@ function DashboardView() {
 
 function UsersView() {
   const token = useToken();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const query = useQuery({ queryKey: ['admin-users'], queryFn: () => fetchAdminUsers(token, { limit: 100, offset: 0 }) });
-  const users = useMemo(() => (query.data?.items ?? []).filter((item) => [item.email, item.full_name, item.role].join(' ').toLowerCase().includes(search.toLowerCase())), [query.data?.items, search]);
+  const [roleFilter, setRoleFilter] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const offset = (page - 1) * PAGE_SIZE;
+  const query = useQuery({ queryKey: ['admin-users', page], queryFn: () => fetchAdminUsers(token, { limit: PAGE_SIZE, offset }) });
+  const users = useMemo(
+    () =>
+      (query.data?.items ?? []).filter((item) => {
+        const matchesSearch = [item.email, item.full_name, item.role].join(' ').toLowerCase().includes(search.toLowerCase());
+        const matchesRole = !roleFilter || item.role === roleFilter;
+        return matchesSearch && matchesRole;
+      }),
+    [query.data?.items, roleFilter, search],
+  );
+
+  const deletion = useMutation({
+    mutationFn: (ids: string[]) => deleteUsers(token, ids),
+    onSuccess: () => {
+      setSelectedIds([]);
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    },
+  });
+
+  function toggleSelection(userId: string) {
+    setSelectedIds((current) => current.includes(userId) ? current.filter((value) => value !== userId) : [...current, userId]);
+  }
+
+  function toggleSelectVisible() {
+    const visibleIds = users.map((item) => item.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+    setSelectedIds(allSelected ? selectedIds.filter((id) => !visibleIds.includes(id)) : Array.from(new Set([...selectedIds, ...visibleIds])));
+  }
+
+  async function handleDelete(ids: string[]) {
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} user(s)? This will also remove their dependent chats, files, jobs, and created collections.`)) return;
+    await deletion.mutateAsync(ids);
+  }
 
   return (
     <div className="space-y-6">
       <SectionHeading eyebrow="Identity" title="Users and access" description="Create users, review role assignment, and monitor operational footprint per account." action={<CreateUserDialog />} />
-      <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card>
-          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Access matrix</p>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            {[
-              { role: 'admin', description: 'Full visibility across users, jobs, processes, uploads, and chat audit trails.' },
-              { role: 'internal_user', description: 'Operational access to collections, uploads, and owned grounded chat workflows.' },
-              { role: 'user', description: 'Standard product access with lower operational surface area.' },
-            ].map((item) => (
-              <Card key={item.role} className="bg-white/4 p-4">
-                <StatusBadge value={item.role} />
-                <p className="mt-4 text-sm leading-7 text-slate-400">{item.description}</p>
-              </Card>
-            ))}
+      <Card>
+        <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Access matrix</p>
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {[
+            { role: 'admin', description: 'Full visibility across users, jobs, processes, uploads, and chat audit trails.' },
+            { role: 'internal_user', description: 'Operational access to collections, uploads, and owned grounded chat workflows.' },
+            { role: 'user', description: 'Standard product access with lower operational surface area.' },
+          ].map((item) => (
+            <Card key={item.role} className="bg-white/4 p-4">
+              <StatusBadge value={item.role} />
+              <p className="mt-4 text-sm leading-7 text-slate-400">{item.description}</p>
+            </Card>
+          ))}
+        </div>
+        <div className="mt-5 rounded-2xl border border-amber-300/15 bg-amber-400/8 p-4 text-sm leading-7 text-amber-50/90">Current backend gap: existing APIs support role selection during creation, but not editing an existing user role. The portal surfaces that clearly instead of pretending updates will persist.</div>
+      </Card>
+      <Card>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="grid flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+            <SearchInput value={search} onChange={(value) => { setSearch(value); setPage(1); }} placeholder="Search visible users by email, name, or role" />
+            <select value={roleFilter} onChange={(event) => { setRoleFilter(event.target.value); setPage(1); }} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none">
+              <option value="">All roles</option>
+              <option value="admin">Admin</option>
+              <option value="internal_user">Internal User</option>
+              <option value="user">User</option>
+            </select>
           </div>
-          <div className="mt-5 rounded-2xl border border-amber-300/15 bg-amber-400/8 p-4 text-sm leading-7 text-amber-50/90">Current backend gap: existing APIs support role selection during creation, but not editing an existing user role. The portal surfaces that clearly instead of pretending updates will persist.</div>
-        </Card>
-        <Card>
-          <SearchInput value={search} onChange={setSearch} placeholder="Search users by email, name, or role" />
-          <div className="mt-5">
-            <QueryBoundary isLoading={query.isLoading} error={query.error} onRetry={() => query.refetch()}>
-              {users.length ? (
-                <DataTable headers={['User', 'Role', 'Uploads', 'Jobs', 'Chats', 'Last login', 'Inspect']}>
+          <div className="flex items-center gap-3 text-sm text-slate-400">
+            <span>Server pagination | {query.data?.items.length ?? 0} loaded on this page</span>
+            <button onClick={toggleSelectVisible} className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/5">Select visible</button>
+          </div>
+        </div>
+        <SelectionToolbar selectedCount={selectedIds.length} resourceLabel="users" onDelete={() => handleDelete(selectedIds)} onClear={() => setSelectedIds([])} />
+        <div className="mt-5">
+          <QueryBoundary isLoading={query.isLoading} error={query.error} onRetry={() => query.refetch()}>
+            {users.length ? (
+              <>
+                <DataTable headers={['', 'User', 'Role', 'Uploads', 'Jobs', 'Chats', 'Last login', 'Actions']}>
                   {users.map((user) => (
                     <tr key={user.id} className="transition hover:bg-white/5">
+                      <td className="px-5 py-4"><input type="checkbox" checked={selectedIds.includes(user.id)} onChange={() => toggleSelection(user.id)} /></td>
                       <td className="px-5 py-4"><p className="font-medium text-white">{user.full_name || 'Unnamed user'}</p><p className="mt-1 text-xs text-slate-500">{user.email}</p></td>
                       <td className="px-5 py-4"><StatusBadge value={user.role} /></td>
                       <td className="px-5 py-4 text-slate-300">{formatNumber(user.file_count)} files | {formatBytes(user.total_uploaded_bytes)}</td>
                       <td className="px-5 py-4 text-slate-300">{formatNumber(user.job_count)}</td>
                       <td className="px-5 py-4 text-slate-300">{formatNumber(user.chat_session_count)}</td>
                       <td className="px-5 py-4 text-slate-400">{formatDateTime(user.last_login_at)}</td>
-                      <td className="px-5 py-4"><Link href={`/users/${user.id}`} className="inline-flex items-center gap-2 text-cyan-200 hover:text-white">Details <ArrowRight className="size-4" /></Link></td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <Link href={`/users/${user.id}`} className="inline-flex items-center gap-2 text-cyan-200 hover:text-white">Details <ArrowRight className="size-4" /></Link>
+                          <button onClick={() => handleDelete([user.id])} className="inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-100 transition hover:bg-rose-500/15"><Trash2 className="size-4" />Delete</button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </DataTable>
-              ) : (
-                <EmptyState title="No users matched the current filter" description="Try a broader search or create a new user from the admin portal." />
-              )}
-            </QueryBoundary>
-          </div>
-        </Card>
-      </div>
+                <PaginationControls page={page} pageSize={PAGE_SIZE} itemCount={query.data?.items.length ?? 0} onPrevious={() => setPage((current) => Math.max(1, current - 1))} onNext={() => setPage((current) => current + 1)} />
+              </>
+            ) : (
+              <EmptyState title="No users matched the current filter" description="Try a broader search or move to another page." />
+            )}
+          </QueryBoundary>
+        </div>
+      </Card>
     </div>
   );
 }
@@ -310,17 +491,57 @@ function UserDetailView({ id }: { id: string }) {
 
 function UploadsView() {
   const token = useToken();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const uploads = useQuery({ queryKey: ['uploads'], queryFn: () => fetchUploads(token, { limit: 100, offset: 0 }) });
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const offset = (page - 1) * PAGE_SIZE;
+  const uploads = useQuery({ queryKey: ['uploads', page], queryFn: () => fetchUploads(token, { limit: PAGE_SIZE, offset }) });
   const summary = useQuery({ queryKey: ['uploads-summary'], queryFn: () => fetchUploadSummary(token) });
-  const filtered = useMemo(() => (uploads.data?.items ?? []).filter((item) => [item.original_name, item.uploaded_by_email, item.collection_name, item.latest_job_status].join(' ').toLowerCase().includes(search.toLowerCase())), [search, uploads.data?.items]);
+  const filtered = useMemo(
+    () =>
+      (uploads.data?.items ?? []).filter((item) => {
+        const matchesSearch = [item.original_name, item.uploaded_by_email, item.collection_name, item.latest_job_status, item.latest_job_stage].join(' ').toLowerCase().includes(search.toLowerCase());
+        const matchesStatus = !statusFilter || item.latest_job_status === statusFilter || item.latest_job_stage === statusFilter;
+        return matchesSearch && matchesStatus;
+      }),
+    [search, statusFilter, uploads.data?.items],
+  );
+  const deletion = useMutation({
+    mutationFn: (ids: string[]) => deleteFiles(token, ids),
+    onSuccess: () => {
+      setSelectedIds([]);
+      queryClient.invalidateQueries({ queryKey: ['uploads'] });
+      queryClient.invalidateQueries({ queryKey: ['uploads-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['job-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['process-summary'] });
+    },
+  });
+
+  function toggleSelection(fileId: string) {
+    setSelectedIds((current) => current.includes(fileId) ? current.filter((value) => value !== fileId) : [...current, fileId]);
+  }
+
+  function toggleSelectVisible() {
+    const visibleIds = filtered.map((item) => item.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+    setSelectedIds(allSelected ? selectedIds.filter((id) => !visibleIds.includes(id)) : Array.from(new Set([...selectedIds, ...visibleIds])));
+  }
+
+  async function handleDelete(ids: string[]) {
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} file(s)? This removes file metadata, related jobs, chunks, and stored artifacts.`)) return;
+    await deletion.mutateAsync(ids);
+  }
 
   return (
     <div className="space-y-6">
-      <SectionHeading eyebrow="Ingestion" title="Uploads and source files" description="Track user upload behavior, ingestion progress, and raw storage volume across the platform." />
+      <SectionHeading eyebrow="Ingestion" title="Uploads and source files" description="Track user upload behavior, ingestion progress, and raw storage volume across the platform." action={<UploadDialog />} />
       <QueryBoundary isLoading={uploads.isLoading || summary.isLoading} error={uploads.error || summary.error} onRetry={() => { uploads.refetch(); summary.refetch(); }}>
         <div className="grid gap-5 md:grid-cols-3">
-          <MetricCard title="Files tracked" value={formatNumber(filtered.length)} helper="Most recent 100 uploads" icon={<FileClock className="size-5" />} />
+          <MetricCard title="Files tracked" value={formatNumber(filtered.length)} helper="Visible uploads on this page" icon={<FileClock className="size-5" />} />
           <MetricCard title="Top uploader bytes" value={formatBytes(Math.max(...(summary.data?.items ?? []).map((item) => item.total_uploaded_bytes), 0))} helper="Largest upload footprint by a single user" icon={<Users className="size-5" />} />
           <MetricCard title="Unique uploaders" value={formatNumber(summary.data?.items?.filter((item) => item.file_count > 0).length)} helper="Users with at least one stored file" icon={<HardDriveDownload className="size-5" />} />
         </div>
@@ -346,23 +567,46 @@ function UploadsView() {
             </div>
           </Card>
           <Card>
-            <SearchInput value={search} onChange={setSearch} placeholder="Search uploads, users, collections, or status" />
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-center">
+                <SearchInput value={search} onChange={(value) => { setSearch(value); setPage(1); }} placeholder="Search visible uploads, users, collections, or status" />
+                <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none">
+                  <option value="">All statuses</option>
+                  <option value="queued">Queued</option>
+                  <option value="processing">Processing</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                  <option value="uploading">Uploading</option>
+                  <option value="parsing">Parsing</option>
+                  <option value="chunking">Chunking</option>
+                  <option value="embedding">Embedding</option>
+                  <option value="indexing">Indexing</option>
+                </select>
+                <button onClick={toggleSelectVisible} className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/5">Select visible</button>
+              </div>
+            </div>
+            <SelectionToolbar selectedCount={selectedIds.length} resourceLabel="files" onDelete={() => handleDelete(selectedIds)} onClear={() => setSelectedIds([])} />
             <div className="mt-5">
               {filtered.length ? (
-                <DataTable headers={['File', 'Owner', 'Collection', 'Stage', 'Progress', 'Size']}>
-                  {filtered.map((item) => (
-                    <tr key={item.id} className="transition hover:bg-white/5">
-                      <td className="px-5 py-4"><p className="font-medium text-white">{item.original_name}</p><p className="mt-1 text-xs text-slate-500">{formatDateTime(item.created_at)}</p></td>
-                      <td className="px-5 py-4 text-slate-300">{item.uploaded_by_full_name || item.uploaded_by_email}</td>
-                      <td className="px-5 py-4 text-slate-300">{item.collection_name || 'No collection'}</td>
-                      <td className="px-5 py-4"><StatusBadge value={item.latest_job_stage || item.latest_job_status || 'unknown'} /></td>
-                      <td className="px-5 py-4 min-w-40"><ProgressBar value={item.latest_job_progress ?? 0} /></td>
-                      <td className="px-5 py-4 text-slate-300">{formatBytes(item.size_bytes)}</td>
-                    </tr>
-                  ))}
-                </DataTable>
+                <>
+                  <DataTable headers={['', 'File', 'Owner', 'Collection', 'Stage', 'Progress', 'Size', 'Actions']}>
+                    {filtered.map((item) => (
+                      <tr key={item.id} className="transition hover:bg-white/5">
+                        <td className="px-5 py-4"><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelection(item.id)} /></td>
+                        <td className="px-5 py-4"><p className="font-medium text-white">{item.original_name}</p><p className="mt-1 text-xs text-slate-500">{formatDateTime(item.created_at)}</p></td>
+                        <td className="px-5 py-4 text-slate-300">{item.uploaded_by_full_name || item.uploaded_by_email}</td>
+                        <td className="px-5 py-4 text-slate-300">{item.collection_name || 'No collection'}</td>
+                        <td className="px-5 py-4"><StatusBadge value={item.latest_job_stage || item.latest_job_status || 'unknown'} /></td>
+                        <td className="px-5 py-4 min-w-40"><ProgressBar value={item.latest_job_progress ?? 0} /></td>
+                        <td className="px-5 py-4 text-slate-300">{formatBytes(item.size_bytes)}</td>
+                        <td className="px-5 py-4"><button onClick={() => handleDelete([item.id])} className="inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-100 transition hover:bg-rose-500/15"><Trash2 className="size-4" />Delete</button></td>
+                      </tr>
+                    ))}
+                  </DataTable>
+                  <PaginationControls page={page} pageSize={PAGE_SIZE} itemCount={uploads.data?.items.length ?? 0} onPrevious={() => setPage((current) => Math.max(1, current - 1))} onNext={() => setPage((current) => current + 1)} />
+                </>
               ) : (
-                <EmptyState title="No uploads matched the current filter" description="Try a broader search or wait for new ingestion jobs to appear." />
+                <EmptyState title="No uploads matched the current filter" description="Try a broader search, another page, or upload a new file." />
               )}
             </div>
           </Card>
@@ -374,9 +618,40 @@ function UploadsView() {
 
 function JobsView() {
   const token = useToken();
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<string>('');
-  const jobs = useQuery({ queryKey: ['jobs', status], queryFn: () => fetchJobs(token, { limit: 100, offset: 0, status: status || undefined }) });
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const offset = (page - 1) * PAGE_SIZE;
+  const jobs = useQuery({ queryKey: ['jobs', status, page], queryFn: () => fetchJobs(token, { limit: PAGE_SIZE, offset, status: status || undefined }) });
   const summary = useQuery({ queryKey: ['jobs-summary'], queryFn: () => fetchJobSummary(token) });
+  const filteredJobs = useMemo(() => (jobs.data?.items ?? []).filter((job) => [job.file_name, job.collection_name, job.status, job.current_stage].join(' ').toLowerCase().includes(search.toLowerCase())), [jobs.data?.items, search]);
+  const deletion = useMutation({
+    mutationFn: (ids: string[]) => deleteJobs(token, ids),
+    onSuccess: () => {
+      setSelectedIds([]);
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['jobs-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['uploads'] });
+    },
+  });
+
+  function toggleSelection(jobId: string) {
+    setSelectedIds((current) => current.includes(jobId) ? current.filter((value) => value !== jobId) : [...current, jobId]);
+  }
+
+  function toggleSelectVisible() {
+    const visibleIds = filteredJobs.map((item) => item.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+    setSelectedIds(allSelected ? selectedIds.filter((id) => !visibleIds.includes(id)) : Array.from(new Set([...selectedIds, ...visibleIds])));
+  }
+
+  async function handleDelete(ids: string[]) {
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} job(s)? This removes stage history and background task links for those jobs.`)) return;
+    await deletion.mutateAsync(ids);
+  }
 
   return (
     <div className="space-y-6">
@@ -392,27 +667,34 @@ function JobsView() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300"><Filter className="size-4" />Status filter</div>
             {['', 'queued', 'processing', 'completed', 'failed'].map((value) => (
-              <button key={value || 'all'} onClick={() => setStatus(value)} className={cn('rounded-full px-4 py-2 text-sm transition', status === value ? 'bg-cyan-400 text-slate-950' : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10')}>
+              <button key={value || 'all'} onClick={() => { setStatus(value); setPage(1); }} className={cn('rounded-full px-4 py-2 text-sm transition', status === value ? 'bg-cyan-400 text-slate-950' : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10')}>
                 {value ? titleize(value) : 'All'}
               </button>
             ))}
+            <div className="min-w-72 flex-1"><SearchInput value={search} onChange={setSearch} placeholder="Search visible jobs by file, collection, status, or stage" /></div>
+            <button onClick={toggleSelectVisible} className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/5">Select visible</button>
           </div>
+          <SelectionToolbar selectedCount={selectedIds.length} resourceLabel="jobs" onDelete={() => handleDelete(selectedIds)} onClear={() => setSelectedIds([])} />
           <div className="mt-5">
-            {(jobs.data?.items ?? []).length ? (
-              <DataTable headers={['Job', 'Status', 'Chunks', 'Progress', 'Created', 'Inspect']}>
-                {(jobs.data?.items ?? []).map((job) => (
-                  <tr key={job.id} className="transition hover:bg-white/5">
-                    <td className="px-5 py-4"><p className="font-medium text-white">{job.file_name}</p><p className="mt-1 text-xs text-slate-500">{job.collection_name || 'No collection'}</p></td>
-                    <td className="px-5 py-4"><div className="flex flex-col gap-2"><StatusBadge value={job.status} /><StatusBadge value={job.current_stage} /></div></td>
-                    <td className="px-5 py-4 text-slate-300">{formatNumber(job.processed_chunks)} / {formatNumber(job.total_chunks)}</td>
-                    <td className="px-5 py-4 min-w-40"><ProgressBar value={job.progress_percent} /></td>
-                    <td className="px-5 py-4 text-slate-400">{formatDateTime(job.created_at)}</td>
-                    <td className="px-5 py-4"><Link href={`/jobs/${job.id}`} className="inline-flex items-center gap-2 text-cyan-200 hover:text-white">Details <ArrowRight className="size-4" /></Link></td>
-                  </tr>
-                ))}
-              </DataTable>
+            {filteredJobs.length ? (
+              <>
+                <DataTable headers={['', 'Job', 'Status', 'Chunks', 'Progress', 'Created', 'Actions']}>
+                  {filteredJobs.map((job) => (
+                    <tr key={job.id} className="transition hover:bg-white/5">
+                      <td className="px-5 py-4"><input type="checkbox" checked={selectedIds.includes(job.id)} onChange={() => toggleSelection(job.id)} /></td>
+                      <td className="px-5 py-4"><p className="font-medium text-white">{job.file_name}</p><p className="mt-1 text-xs text-slate-500">{job.collection_name || 'No collection'}</p></td>
+                      <td className="px-5 py-4"><div className="flex flex-col gap-2"><StatusBadge value={job.status} /><StatusBadge value={job.current_stage} /></div></td>
+                      <td className="px-5 py-4 text-slate-300">{formatNumber(job.processed_chunks)} / {formatNumber(job.total_chunks)}</td>
+                      <td className="px-5 py-4 min-w-40"><ProgressBar value={job.progress_percent} /></td>
+                      <td className="px-5 py-4 text-slate-400">{formatDateTime(job.created_at)}</td>
+                      <td className="px-5 py-4"><div className="flex items-center gap-3"><Link href={`/jobs/${job.id}`} className="inline-flex items-center gap-2 text-cyan-200 hover:text-white">Details <ArrowRight className="size-4" /></Link><button onClick={() => handleDelete([job.id])} className="inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-100 transition hover:bg-rose-500/15"><Trash2 className="size-4" />Delete</button></div></td>
+                    </tr>
+                  ))}
+                </DataTable>
+                <PaginationControls page={page} pageSize={PAGE_SIZE} itemCount={jobs.data?.items.length ?? 0} onPrevious={() => setPage((current) => Math.max(1, current - 1))} onNext={() => setPage((current) => current + 1)} />
+              </>
             ) : (
-              <EmptyState title="No jobs available" description="Upload a file or clear the current status filter to see more ingestion jobs." />
+              <EmptyState title="No jobs available" description="Try a different filter, another page, or wait for new ingestion jobs." />
             )}
           </div>
         </Card>
@@ -504,8 +786,39 @@ function JobDetailView({ id }: { id: string }) {
 
 function ProcessesView() {
   const token = useToken();
+  const queryClient = useQueryClient();
   const summary = useQuery({ queryKey: ['process-summary'], queryFn: () => fetchProcessSummary(token) });
-  const processes = useQuery({ queryKey: ['processes'], queryFn: () => fetchProcesses(token, { limit: 100, offset: 0 }) });
+  const [status, setStatus] = useState<string>('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const offset = (page - 1) * PAGE_SIZE;
+  const processes = useQuery({ queryKey: ['processes', status, page], queryFn: () => fetchProcesses(token, { limit: PAGE_SIZE, offset, status: status || undefined }) });
+  const filtered = useMemo(() => (processes.data?.items ?? []).filter((process) => [process.task_type, process.status, process.current_stage, process.file_name, process.worker_id].join(' ').toLowerCase().includes(search.toLowerCase())), [processes.data?.items, search]);
+  const deletion = useMutation({
+    mutationFn: (ids: string[]) => deleteProcesses(token, ids),
+    onSuccess: () => {
+      setSelectedIds([]);
+      queryClient.invalidateQueries({ queryKey: ['processes'] });
+      queryClient.invalidateQueries({ queryKey: ['process-summary'] });
+    },
+  });
+
+  function toggleSelection(processId: string) {
+    setSelectedIds((current) => current.includes(processId) ? current.filter((value) => value !== processId) : [...current, processId]);
+  }
+
+  function toggleSelectVisible() {
+    const visibleIds = filtered.map((item) => item.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+    setSelectedIds(allSelected ? selectedIds.filter((id) => !visibleIds.includes(id)) : Array.from(new Set([...selectedIds, ...visibleIds])));
+  }
+
+  async function handleDelete(ids: string[]) {
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} process record(s)?`)) return;
+    await deletion.mutateAsync(ids);
+  }
 
   return (
     <div className="space-y-6">
@@ -517,22 +830,39 @@ function ProcessesView() {
           { title: 'Average progress', value: `${Math.round(summary.data?.average_progress_percent ?? 0)}%`, helper: 'Across all tracked processes', icon: <DatabaseZap className="size-5" /> },
           { title: 'Queue depth', value: formatNumber(summary.data?.queue_depth), helper: 'Redis ingestion queue length', icon: <Boxes className="size-5" /> },
         ]} />
-        {(processes.data?.items ?? []).length ? (
-          <DataTable headers={['Process', 'Status', 'Worker', 'Progress', 'File', 'Updated']}>
-            {(processes.data?.items ?? []).map((process) => (
-              <tr key={process.id} className="transition hover:bg-white/5">
-                <td className="px-5 py-4"><p className="font-medium text-white">{titleize(process.task_type)}</p><p className="mt-1 text-xs text-slate-500">{titleize(process.current_stage)}</p></td>
-                <td className="px-5 py-4"><StatusBadge value={process.status} /></td>
-                <td className="px-5 py-4 text-slate-300">{process.worker_id || 'Unassigned'}</td>
-                <td className="px-5 py-4 min-w-40"><ProgressBar value={process.progress_percent} /></td>
-                <td className="px-5 py-4 text-slate-300">{process.file_name || 'Unknown file'}</td>
-                <td className="px-5 py-4 text-slate-400">{formatDateTime(process.updated_at || process.heartbeat_at)}</td>
-              </tr>
+        <Card>
+          <div className="flex flex-wrap items-center gap-3">
+            {['', 'queued', 'running', 'completed', 'failed'].map((value) => (
+              <button key={value || 'all'} onClick={() => { setStatus(value); setPage(1); }} className={cn('rounded-full px-4 py-2 text-sm transition', status === value ? 'bg-cyan-400 text-slate-950' : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10')}>
+                {value ? titleize(value) : 'All'}
+              </button>
             ))}
-          </DataTable>
-        ) : (
-          <EmptyState title="No background processes found" description="Once workers pick up ingestion tasks, their live process records will appear here." />
-        )}
+            <div className="min-w-72 flex-1"><SearchInput value={search} onChange={setSearch} placeholder="Search visible processes by worker, file, task, or stage" /></div>
+            <button onClick={toggleSelectVisible} className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/5">Select visible</button>
+          </div>
+          <SelectionToolbar selectedCount={selectedIds.length} resourceLabel="processes" onDelete={() => handleDelete(selectedIds)} onClear={() => setSelectedIds([])} />
+          {filtered.length ? (
+            <>
+              <DataTable headers={['', 'Process', 'Status', 'Worker', 'Progress', 'File', 'Updated', 'Actions']}>
+                {filtered.map((process) => (
+                  <tr key={process.id} className="transition hover:bg-white/5">
+                    <td className="px-5 py-4"><input type="checkbox" checked={selectedIds.includes(process.id)} onChange={() => toggleSelection(process.id)} /></td>
+                    <td className="px-5 py-4"><p className="font-medium text-white">{titleize(process.task_type)}</p><p className="mt-1 text-xs text-slate-500">{titleize(process.current_stage)}</p></td>
+                    <td className="px-5 py-4"><StatusBadge value={process.status} /></td>
+                    <td className="px-5 py-4 text-slate-300">{process.worker_id || 'Unassigned'}</td>
+                    <td className="px-5 py-4 min-w-40"><ProgressBar value={process.progress_percent} /></td>
+                    <td className="px-5 py-4 text-slate-300">{process.file_name || 'Unknown file'}</td>
+                    <td className="px-5 py-4 text-slate-400">{formatDateTime(process.updated_at || process.heartbeat_at)}</td>
+                    <td className="px-5 py-4"><button onClick={() => handleDelete([process.id])} className="inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-100 transition hover:bg-rose-500/15"><Trash2 className="size-4" />Delete</button></td>
+                  </tr>
+                ))}
+              </DataTable>
+              <PaginationControls page={page} pageSize={PAGE_SIZE} itemCount={processes.data?.items.length ?? 0} onPrevious={() => setPage((current) => Math.max(1, current - 1))} onNext={() => setPage((current) => current + 1)} />
+            </>
+          ) : (
+            <EmptyState title="No background processes found" description="Try a different filter or wait for workers to pick up new ingestion tasks." />
+          )}
+        </Card>
       </QueryBoundary>
     </div>
   );
@@ -540,66 +870,146 @@ function ProcessesView() {
 
 function ActivityView() {
   const token = useToken();
-  const query = useQuery({ queryKey: ['activity'], queryFn: () => fetchActivity(token, { limit: 50 }) });
+  const [search, setSearch] = useState('');
+  const [visibilityFilter, setVisibilityFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const offset = (page - 1) * PAGE_SIZE;
+  const query = useQuery({ queryKey: ['activity', page], queryFn: () => fetchActivity(token, { limit: PAGE_SIZE, offset }) });
+  const items = useMemo(
+    () =>
+      (query.data?.items ?? []).filter((item) => {
+        const matchesSearch = [item.activity_type, item.description, item.actor_email, item.target_type, item.target_id].join(' ').toLowerCase().includes(search.toLowerCase());
+        const matchesVisibility = !visibilityFilter || item.visibility === visibilityFilter;
+        return matchesSearch && matchesVisibility;
+      }),
+    [query.data?.items, search, visibilityFilter],
+  );
 
   return (
     <div className="space-y-6">
       <SectionHeading eyebrow="Audit" title="Recent activity" description="Follow the most recent operational and user actions across authentication, uploads, jobs, and chat." />
-      <QueryBoundary isLoading={query.isLoading} error={query.error} onRetry={() => query.refetch()}>
-        {(query.data?.items ?? []).length ? (
-          <div className="space-y-4">
-            {query.data?.items.map((item) => (
-              <motion.div key={item.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                <Card>
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">{titleize(item.activity_type)}</p>
-                      <p className="mt-3 text-lg font-semibold text-white">{item.description}</p>
-                      <p className="mt-2 text-sm text-slate-400">Actor: {item.actor_email || item.actor_user_id || 'System'} | Target: {item.target_type || 'n/a'}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <StatusBadge value={item.visibility} />
-                      <span className="text-sm text-slate-500">{formatDateTime(item.created_at)}</span>
-                    </div>
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState title="No recent activity" description="Activity logs will surface here as users and background systems interact with the stack." />
-        )}
-      </QueryBoundary>
+      <Card>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
+          <SearchInput value={search} onChange={(value) => { setSearch(value); setPage(1); }} placeholder="Search visible activity by actor, event type, target, or description" />
+          <select value={visibilityFilter} onChange={(event) => { setVisibilityFilter(event.target.value); setPage(1); }} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none">
+            <option value="">All visibility</option>
+            <option value="foreground">Foreground</option>
+            <option value="background">Background</option>
+            <option value="system">System</option>
+          </select>
+        </div>
+        <div className="mt-5">
+          <QueryBoundary isLoading={query.isLoading} error={query.error} onRetry={() => query.refetch()}>
+            {items.length ? (
+              <>
+                <div className="space-y-4">
+                  {items.map((item) => (
+                    <motion.div key={item.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                      <Card>
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.3em] text-slate-500">{titleize(item.activity_type)}</p>
+                            <p className="mt-3 text-lg font-semibold text-white">{item.description}</p>
+                            <p className="mt-2 text-sm text-slate-400">Actor: {item.actor_email || item.actor_user_id || 'System'} | Target: {item.target_type || 'n/a'}{item.target_id ? ` | ${item.target_id}` : ''}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <StatusBadge value={item.visibility} />
+                            <span className="text-sm text-slate-500">{formatDateTime(item.created_at)}</span>
+                          </div>
+                        </div>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </div>
+                <PaginationControls page={page} pageSize={PAGE_SIZE} itemCount={query.data?.items.length ?? 0} onPrevious={() => setPage((current) => Math.max(1, current - 1))} onNext={() => setPage((current) => current + 1)} />
+              </>
+            ) : (
+              <EmptyState title="No recent activity" description="Try another page or a broader filter to inspect more recent operational events." />
+            )}
+          </QueryBoundary>
+        </div>
+      </Card>
     </div>
   );
 }
 
 function ChatsView() {
   const token = useToken();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const query = useQuery({ queryKey: ['admin-chats'], queryFn: () => fetchChats(token, { limit: 100, offset: 0 }) });
-  const items = useMemo(() => (query.data?.items ?? []).filter((item) => [item.title, item.user_email, item.user_full_name, item.latest_assistant_status].join(' ').toLowerCase().includes(search.toLowerCase())), [query.data?.items, search]);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const offset = (page - 1) * PAGE_SIZE;
+  const query = useQuery({ queryKey: ['admin-chats', page], queryFn: () => fetchChats(token, { limit: PAGE_SIZE, offset }) });
+  const items = useMemo(
+    () =>
+      (query.data?.items ?? []).filter((item) => {
+        const matchesSearch = [item.title, item.user_email, item.user_full_name, item.latest_assistant_status].join(' ').toLowerCase().includes(search.toLowerCase());
+        const matchesStatus = !statusFilter || item.latest_assistant_status === statusFilter;
+        return matchesSearch && matchesStatus;
+      }),
+    [query.data?.items, search, statusFilter],
+  );
+  const deletion = useMutation({
+    mutationFn: (ids: string[]) => deleteChats(token, ids),
+    onSuccess: () => {
+      setSelectedIds([]);
+      queryClient.invalidateQueries({ queryKey: ['admin-chats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    },
+  });
+
+  function toggleSelection(sessionId: string) {
+    setSelectedIds((current) => current.includes(sessionId) ? current.filter((value) => value !== sessionId) : [...current, sessionId]);
+  }
+
+  function toggleSelectVisible() {
+    const visibleIds = items.map((item) => item.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+    setSelectedIds(allSelected ? selectedIds.filter((id) => !visibleIds.includes(id)) : Array.from(new Set([...selectedIds, ...visibleIds])));
+  }
+
+  async function handleDelete(ids: string[]) {
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} chat session(s)? This removes their messages and citations.`)) return;
+    await deletion.mutateAsync(ids);
+  }
 
   return (
     <div className="space-y-6">
       <SectionHeading eyebrow="Chat audit" title="User chat sessions" description="Review grounded conversations in a read-only interface, including assistant message health and citation counts." />
       <Card>
-        <SearchInput value={search} onChange={setSearch} placeholder="Search sessions by title, user, or assistant status" />
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-center">
+          <SearchInput value={search} onChange={(value) => { setSearch(value); setPage(1); }} placeholder="Search visible sessions by title, user, or assistant status" />
+          <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none">
+            <option value="">All assistant states</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+            <option value="streaming">Streaming</option>
+          </select>
+          <button onClick={toggleSelectVisible} className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/5">Select visible</button>
+        </div>
+        <SelectionToolbar selectedCount={selectedIds.length} resourceLabel="chat sessions" onDelete={() => handleDelete(selectedIds)} onClear={() => setSelectedIds([])} />
         <div className="mt-5">
           <QueryBoundary isLoading={query.isLoading} error={query.error} onRetry={() => query.refetch()}>
             {items.length ? (
-              <DataTable headers={['Session', 'User', 'Messages', 'Assistant', 'Updated', 'Inspect']}>
-                {items.map((session) => (
-                  <tr key={session.id} className="transition hover:bg-white/5">
-                    <td className="px-5 py-4"><p className="font-medium text-white">{session.title}</p><p className="mt-1 text-xs text-slate-500">{session.id}</p></td>
-                    <td className="px-5 py-4 text-slate-300">{session.user_full_name || session.user_email}</td>
-                    <td className="px-5 py-4 text-slate-300">{formatNumber(session.message_count)} messages | {formatNumber(session.citation_count)} citations</td>
-                    <td className="px-5 py-4"><StatusBadge value={session.latest_assistant_status || 'unknown'} /></td>
-                    <td className="px-5 py-4 text-slate-400">{formatDateTime(session.updated_at)}</td>
-                    <td className="px-5 py-4"><Link href={`/chats/${session.id}`} className="inline-flex items-center gap-2 text-cyan-200 hover:text-white">Open <ArrowRight className="size-4" /></Link></td>
-                  </tr>
-                ))}
-              </DataTable>
+              <>
+                <DataTable headers={['', 'Session', 'User', 'Messages', 'Assistant', 'Updated', 'Actions']}>
+                  {items.map((session) => (
+                    <tr key={session.id} className="transition hover:bg-white/5">
+                      <td className="px-5 py-4"><input type="checkbox" checked={selectedIds.includes(session.id)} onChange={() => toggleSelection(session.id)} /></td>
+                      <td className="px-5 py-4"><p className="font-medium text-white">{session.title}</p><p className="mt-1 text-xs text-slate-500">{session.id}</p></td>
+                      <td className="px-5 py-4 text-slate-300">{session.user_full_name || session.user_email}</td>
+                      <td className="px-5 py-4 text-slate-300">{formatNumber(session.message_count)} messages | {formatNumber(session.citation_count)} citations</td>
+                      <td className="px-5 py-4"><StatusBadge value={session.latest_assistant_status || 'unknown'} /></td>
+                      <td className="px-5 py-4 text-slate-400">{formatDateTime(session.updated_at)}</td>
+                      <td className="px-5 py-4"><div className="flex items-center gap-3"><Link href={`/chats/${session.id}`} className="inline-flex items-center gap-2 text-cyan-200 hover:text-white">Open <ArrowRight className="size-4" /></Link><button onClick={() => handleDelete([session.id])} className="inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-100 transition hover:bg-rose-500/15"><Trash2 className="size-4" />Delete</button></div></td>
+                    </tr>
+                  ))}
+                </DataTable>
+                <PaginationControls page={page} pageSize={PAGE_SIZE} itemCount={query.data?.items.length ?? 0} onPrevious={() => setPage((current) => Math.max(1, current - 1))} onNext={() => setPage((current) => current + 1)} />
+              </>
             ) : (
               <EmptyState title="No chat sessions yet" description="Once users start asking grounded questions, session transcripts will appear here." />
             )}
@@ -669,33 +1079,101 @@ function ChatDetailView({ id }: { id: string }) {
 
 function CollectionsView() {
   const token = useToken();
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [visibilityFilter, setVisibilityFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const query = useQuery({ queryKey: ['collections'], queryFn: () => fetchCollections(token) });
-  const items = useMemo(() => (Array.isArray(query.data) ? query.data : query.data?.items ?? []), [query.data]);
+  const allItems = useMemo(() => (Array.isArray(query.data) ? query.data : query.data?.items ?? []), [query.data]);
+  const filteredItems = useMemo(
+    () =>
+      allItems.filter((collection) => {
+        const matchesSearch = [collection.name, collection.slug, collection.description].join(' ').toLowerCase().includes(search.toLowerCase());
+        const matchesVisibility = !visibilityFilter || collection.visibility === visibilityFilter;
+        return matchesSearch && matchesVisibility;
+      }),
+    [allItems, search, visibilityFilter],
+  );
+  const pagedItems = useMemo(() => filteredItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filteredItems, page]);
+  const deletion = useMutation({
+    mutationFn: (ids: string[]) => deleteCollections(token, ids),
+    onSuccess: () => {
+      setSelectedIds([]);
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
+      queryClient.invalidateQueries({ queryKey: ['uploads'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+    },
+  });
+
+  function toggleSelection(collectionId: string) {
+    setSelectedIds((current) => current.includes(collectionId) ? current.filter((value) => value !== collectionId) : [...current, collectionId]);
+  }
+
+  function toggleSelectVisible() {
+    const visibleIds = pagedItems.map((item) => item.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+    setSelectedIds(allSelected ? selectedIds.filter((id) => !visibleIds.includes(id)) : Array.from(new Set([...selectedIds, ...visibleIds])));
+  }
+
+  async function handleDelete(ids: string[]) {
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} collection(s)? This will also remove their files, chunks, jobs, and stored artifacts.`)) return;
+    await deletion.mutateAsync(ids);
+  }
 
   return (
     <div className="space-y-6">
-      <SectionHeading eyebrow="Knowledge spaces" title="Collections" description="A quick read-only view of the collections currently available to admins and internal operators." />
-      <QueryBoundary isLoading={query.isLoading} error={query.error} onRetry={() => query.refetch()}>
-        {items.length ? (
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {items.map((collection) => (
-              <Card key={collection.id}>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-500">{collection.visibility}</p>
-                    <h3 className="mt-3 text-xl font-semibold text-white">{collection.name}</h3>
-                  </div>
-                  <FolderKanban className="size-5 text-slate-400" />
+      <SectionHeading eyebrow="Knowledge spaces" title="Collections" description="Inspect and manage the collections currently available to admins and internal operators." />
+      <Card>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-center">
+          <SearchInput value={search} onChange={(value) => { setSearch(value); setPage(1); }} placeholder="Search collections by name, slug, or description" />
+          <select value={visibilityFilter} onChange={(event) => { setVisibilityFilter(event.target.value); setPage(1); }} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none">
+            <option value="">All visibility</option>
+            <option value="private">Private</option>
+            <option value="internal">Internal</option>
+            <option value="public">Public</option>
+          </select>
+          <button onClick={toggleSelectVisible} className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/5">Select visible</button>
+        </div>
+        <SelectionToolbar selectedCount={selectedIds.length} resourceLabel="collections" onDelete={() => handleDelete(selectedIds)} onClear={() => setSelectedIds([])} />
+        <div className="mt-5">
+          <QueryBoundary isLoading={query.isLoading} error={query.error} onRetry={() => query.refetch()}>
+            {pagedItems.length ? (
+              <>
+                <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {pagedItems.map((collection) => (
+                    <Card key={collection.id}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                          <input type="checkbox" checked={selectedIds.includes(collection.id)} onChange={() => toggleSelection(collection.id)} className="mt-1" />
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.3em] text-slate-500">{collection.visibility}</p>
+                            <h3 className="mt-3 text-xl font-semibold text-white">{collection.name}</h3>
+                          </div>
+                        </div>
+                        <FolderKanban className="size-5 text-slate-400" />
+                      </div>
+                      <p className="mt-4 text-sm leading-7 text-slate-400">{collection.description || 'No description provided for this collection.'}</p>
+                      <div className="mt-4 space-y-2 text-xs text-slate-500">
+                        <p>ID: {collection.id}</p>
+                        <p>Slug: {collection.slug || 'n/a'}</p>
+                        <p>Files: {formatNumber(collection.file_count ?? 0)}</p>
+                      </div>
+                      <div className="mt-5 flex items-center justify-end">
+                        <button onClick={() => handleDelete([collection.id])} className="inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-100 transition hover:bg-rose-500/15"><Trash2 className="size-4" />Delete</button>
+                      </div>
+                    </Card>
+                  ))}
                 </div>
-                <p className="mt-4 text-sm leading-7 text-slate-400">{collection.description || 'No description provided for this collection.'}</p>
-                <p className="mt-4 text-xs text-slate-500">ID: {collection.id}</p>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <EmptyState title="No collections available" description="Collections created through the current API will show up here for admin review." />
-        )}
-      </QueryBoundary>
+                <PaginationControls page={page} pageSize={PAGE_SIZE} itemCount={pagedItems.length} hasNext={page * PAGE_SIZE < filteredItems.length} onPrevious={() => setPage((current) => Math.max(1, current - 1))} onNext={() => setPage((current) => current + 1)} />
+              </>
+            ) : (
+              <EmptyState title="No collections available" description="Try another page or broaden the filter to inspect more knowledge spaces." />
+            )}
+          </QueryBoundary>
+        </div>
+      </Card>
     </div>
   );
 }

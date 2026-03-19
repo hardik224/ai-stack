@@ -50,3 +50,13 @@ def upload_bytes(bucket_name: str, object_key: str, content: bytes, content_type
         Key=object_key,
         ExtraArgs={"ContentType": content_type},
     )
+
+
+def delete_object(bucket_name: str, object_key: str) -> None:
+    client = get_storage_client()
+    try:
+        client.delete_object(Bucket=bucket_name, Key=object_key)
+    except ClientError as exc:
+        error_code = str(exc.response.get('Error', {}).get('Code', ''))
+        if error_code not in {'NoSuchKey', 'NoSuchBucket', '404'}:
+            raise

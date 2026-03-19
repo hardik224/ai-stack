@@ -282,6 +282,8 @@ export interface CollectionItem {
   visibility: string;
   created_by?: string | null;
   created_at?: string;
+  updated_at?: string | null;
+  file_count?: number;
 }
 
 export interface CreateUserPayload {
@@ -289,4 +291,18 @@ export interface CreateUserPayload {
   full_name: string;
   password: string;
   role: UserRole;
+}
+
+
+export interface DeleteResponse {
+  deleted_count: number;
+  deleted_ids: string[];
+  deleted_file_count?: number;
+  deleted_collection_count?: number;
+  deleted_chat_count?: number;
+  cache_versions?: {
+    global_version?: number | null;
+    collection_versions?: Record<string, number>;
+  };
+  warnings?: string[];
 }

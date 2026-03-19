@@ -32,7 +32,7 @@ SELECT
 FROM activity_logs a
 LEFT JOIN users u ON u.id = a.actor_user_id
 ORDER BY a.created_at DESC
-LIMIT %s;
+LIMIT %s OFFSET %s;
 """
 
 
@@ -62,5 +62,5 @@ def create_activity(
     )
 
 
-def list_recent_activity(limit: int) -> list[dict[str, Any]]:
-    return fetch_all(LIST_RECENT_ACTIVITY, (limit,))
+def list_recent_activity(limit: int, offset: int = 0) -> list[dict[str, Any]]:
+    return fetch_all(LIST_RECENT_ACTIVITY, (limit, offset))

@@ -1,7 +1,8 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { AlertTriangle, Search, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, ArrowUpRight, Search, Sparkles } from 'lucide-react';
 
 import { cn, clampPercentage, formatBytes, formatDateTime, formatNumber, titleize } from '@/lib/utils';
 
@@ -20,20 +21,30 @@ export function Card({ className, children }: { className?: string; children: Re
   );
 }
 
-export function MetricCard({ title, value, helper, accent, icon }: { title: string; value: string; helper?: string; accent?: string; icon?: React.ReactNode }) {
+export function MetricCard({ title, value, helper, accent, icon, href }: { title: string; value: string; helper?: string; accent?: string; icon?: React.ReactNode; href?: string }) {
+  const content = (
+    <Card className={cn('relative overflow-hidden', href ? 'transition hover:border-cyan-300/20 hover:bg-white/8' : '')}>
+      <div className={cn('absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400/0 via-cyan-300/70 to-fuchsia-400/0', accent)} />
+      {href ? (
+        <div className="absolute right-5 top-5 flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-cyan-200/70">
+          <span>Open</span>
+          <ArrowUpRight className="size-4 transition-transform duration-200 group-hover:translate-x-1 group-hover:-translate-y-1" />
+        </div>
+      ) : null}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.35em] text-slate-400">{title}</p>
+          <p className="mt-4 text-3xl font-semibold text-white">{value}</p>
+          {helper ? <p className="mt-2 text-sm text-slate-400">{helper}</p> : null}
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-slate-200">{icon ?? <Sparkles className="size-5" />}</div>
+      </div>
+    </Card>
+  );
+
   return (
     <motion.div whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
-      <Card className="relative overflow-hidden">
-        <div className={cn('absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400/0 via-cyan-300/70 to-fuchsia-400/0', accent)} />
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-slate-400">{title}</p>
-            <p className="mt-4 text-3xl font-semibold text-white">{value}</p>
-            {helper ? <p className="mt-2 text-sm text-slate-400">{helper}</p> : null}
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-slate-200">{icon ?? <Sparkles className="size-5" />}</div>
-        </div>
-      </Card>
+      {href ? <Link href={href} className="group block">{content}</Link> : content}
     </motion.div>
   );
 }
