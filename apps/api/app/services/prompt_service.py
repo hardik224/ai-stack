@@ -13,18 +13,20 @@ MODE_GUIDANCE = {
             'Answer strictly and only from the provided evidence. Never answer from general world knowledge, prior training, or assumptions. '
             'If the evidence is partial, clearly state what is known and what remains uncertain. '
             'If the evidence is insufficient, explicitly say that the uploaded knowledge base does not contain enough information. '
-            'Always produce structured markdown with these sections when evidence exists: '
-            '# Answer, ## Key Points, ## Evidence, ## Sources. '
-            'Add ## Uncertainty only when needed. Use inline citations like [S1], [S2] that exactly match the provided source labels. '
+            'Use dynamic, well-structured markdown that matches the user request and the evidence. '
+            'For direct factual questions, answer directly with a short lead and bullets only when useful. '
+            'For procedures, use steps. For summaries or comparisons, use sections only when they help clarity. '
+            'Use inline citations like [S1], [S2] that exactly match the provided source labels. '
+            'Include a Sources section only when citations are actually used. '
             'Do not cite any source that is not in the provided evidence. Keep the answer concise, operational, and precise.'
         ),
         'instructions': [
             'Answer only from the evidence above.',
             'Never use general knowledge if the evidence does not support the answer.',
             'If the answer is not present in the evidence, say the knowledge base does not contain enough information.',
-            'Use markdown headings and bullets.',
+            'Use markdown formatting naturally when it improves clarity; do not force the same section headings every time.',
             'Cite supported claims inline with [S#].',
-            'Include a ## Sources section listing the cited sources.',
+            'Include a Sources section only when you cite evidence.',
             'If evidence is incomplete, add a short ## Uncertainty section.',
             'Prefer direct operational guidance for SOPs, product docs, and internal manuals.',
         ],
@@ -38,10 +40,10 @@ MODE_GUIDANCE = {
             'Do not invent missing numbers, missing business logic, or fill gaps with general knowledge. '
             'If the evidence is partial, explain what can be concluded and what cannot be concluded yet. '
             'If the evidence is insufficient, say that the uploaded knowledge base does not contain enough information for a reliable analysis. '
-            'Always produce structured markdown with these sections when evidence exists: '
-            '# Answer, ## Key Findings, ## Analysis, ## Evidence, ## Sources. '
-            'Add ## Uncertainty when assumptions, gaps, or incomplete coverage exist. '
+            'Use dynamic, well-structured markdown that fits the content. '
+            'Use headings, bullets, numbered lists, compact comparisons, or short sections only when they genuinely help explain the result. '
             'Use inline citations like [S1], [S2] that exactly match the provided source labels. '
+            'Include a Sources section only when citations are actually used. '
             'Keep the analysis business-friendly, explicit, and careful.'
         ),
         'instructions': [
@@ -49,7 +51,7 @@ MODE_GUIDANCE = {
             'Never use general knowledge or unsupported assumptions to complete the analysis.',
             'If the evidence is too weak for a reliable conclusion, explicitly say so.',
             'Combine evidence across multiple files when useful.',
-            'Use markdown headings and bullets or numbered lists where helpful.',
+            'Use markdown structure naturally; do not force the same section layout for every answer.',
             'Cite supported findings inline with [S#].',
             'Show comparisons, trends, exceptions, or risk points only when grounded in the evidence.',
             'If data is incomplete for a full conclusion, explicitly state the gap in ## Uncertainty.',
@@ -104,32 +106,18 @@ def format_context_block(context_items: list[dict[str, Any]]) -> str:
 def build_insufficient_evidence_markdown(*, question: str, mode: str) -> str:
     if mode == 'analysis':
         return (
-            '# Answer\n\n'
-            'I could not find enough grounded evidence in the uploaded knowledge base to produce a reliable analysis.\n\n'
-            '## Key Findings\n\n'
-            '- I searched the indexed documents and report data related to your request.\n'
-            '- The available evidence is not strong enough to support a trustworthy multi-file analysis.\n'
-            '- I will not fill the gaps with general knowledge or unsupported assumptions.\n'
-            '- Please upload more relevant reports or narrow the question to a specific metric, time range, or process area.\n\n'
-            '## Analysis\n\n'
-            f'- Original request: **{question.strip()}**\n'
-            '- A grounded analytical conclusion is not possible from the currently retrieved evidence.\n\n'
-            '## Sources\n\n'
-            '- No reliable source citations were available for this analysis.\n'
+            '## Not enough evidence for a reliable analysis\n\n'
+            'I searched the uploaded knowledge base, but the available evidence is too limited to produce a trustworthy grounded analysis.\n\n'
+            f'- Request: **{question.strip()}**\n'
+            '- I am avoiding unsupported assumptions or general knowledge.\n'
+            '- Upload more relevant reports or narrow the question, and I can try again with grounded evidence.\n'
         )
     return (
-        '# Answer\n\n'
-        'I could not find enough information in the uploaded knowledge base to answer this confidently.\n\n'
-        '## Key Points\n\n'
-        '- I searched the indexed documents for evidence related to your question.\n'
-        '- The available evidence is not strong enough to support a reliable grounded answer.\n'
-        '- I will not answer from general knowledge or assumptions when the knowledge base does not support it.\n'
-        '- Please upload more relevant documents or refine the question with more specific terms.\n\n'
-        '## Evidence\n\n'
-        f'- Original question: **{question.strip()}**\n'
-        '- Retrieved evidence was insufficient for a grounded answer.\n\n'
-        '## Sources\n\n'
-        '- No reliable source citations were available for this answer.\n'
+        '## Not enough grounded information\n\n'
+        'I searched the uploaded knowledge base, but I could not find enough reliable evidence to answer this confidently.\n\n'
+        f'- Question: **{question.strip()}**\n'
+        '- I am not filling the gaps with general knowledge or assumptions.\n'
+        '- Try uploading a more relevant document or asking with more specific terms.\n'
     )
 
 

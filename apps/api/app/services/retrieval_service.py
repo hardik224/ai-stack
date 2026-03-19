@@ -510,10 +510,15 @@ def assess_evidence(items: list[dict]) -> dict:
     max_lexical_overlap = max(float(item.get('lexical_overlap', 0.0)) for item in items)
     selected_count = len(items)
 
-    is_sufficient = (
-        selected_count >= settings.chat_min_grounding_items
-        and top_rerank_score >= settings.chat_min_grounding_score
-        and max_lexical_overlap >= settings.chat_min_grounding_lexical_overlap
+    has_min_items = selected_count >= settings.chat_min_grounding_items
+    has_strong_rerank = top_rerank_score >= settings.chat_min_grounding_score
+    has_strong_semantic = top_vector_score >= max(settings.chat_default_score_threshold + 0.12, 0.34)
+    has_strong_keyword = top_keyword_score >= 0.2 and max_lexical_overlap >= max(settings.chat_min_grounding_lexical_overlap * 0.5, 0.04)
+
+    is_sufficient = has_min_items and (
+        (has_strong_rerank and max_lexical_overlap >= max(settings.chat_min_grounding_lexical_overlap * 0.5, 0.04))
+        or has_strong_semantic
+        or has_strong_keyword
     )
 
     reason = 'grounded_evidence_sufficient' if is_sufficient else 'grounded_evidence_too_weak'
@@ -526,6 +531,9 @@ def assess_evidence(items: list[dict]) -> dict:
         'top_vector_score': round(top_vector_score, 6),
         'top_keyword_score': round(top_keyword_score, 6),
         'max_lexical_overlap': round(max_lexical_overlap, 6),
+        'has_strong_rerank': has_strong_rerank,
+        'has_strong_semantic': has_strong_semantic,
+        'has_strong_keyword': has_strong_keyword,
     }
 
 

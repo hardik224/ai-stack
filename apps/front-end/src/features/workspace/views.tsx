@@ -168,6 +168,9 @@ function AssistantView() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const streamQueueRef = useRef<string[]>([]);
+  const streamIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const assistantMessageIdRef = useRef<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -176,6 +179,7 @@ function AssistantView() {
   const [streamStatus, setStreamStatus] = useState('');
   const [streamError, setStreamError] = useState<string | null>(null);
   const [sessionSearch, setSessionSearch] = useState('');
+  const [isNewChatDraft, setIsNewChatDraft] = useState(false);
 
   const sessionsQuery = useQuery({
     queryKey: ['chat-sessions'],
@@ -188,10 +192,10 @@ function AssistantView() {
   });
 
   useEffect(() => {
-    if (!selectedSessionId && sessionsQuery.data?.items?.length) {
+    if (!selectedSessionId && !isNewChatDraft && sessionsQuery.data?.items?.length) {
       setSelectedSessionId(sessionsQuery.data.items[0].id);
     }
-  }, [selectedSessionId, sessionsQuery.data?.items]);
+  }, [isNewChatDraft, selectedSessionId, sessionsQuery.data?.items]);
 
   useEffect(() => {
     if (!streaming && detailQuery.data?.messages) {
@@ -203,13 +207,58 @@ function AssistantView() {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, streamStatus]);
 
-  const currentSession = sessionsQuery.data?.items.find((item) => item.id === selectedSessionId) ?? detailQuery.data?.session ?? null;
+  useEffect(() => () => {
+    if (streamIntervalRef.current) {
+      clearInterval(streamIntervalRef.current);
+      streamIntervalRef.current = null;
+    }
+    streamQueueRef.current = [];
+  }, []);
+
+  const currentSession = selectedSessionId ? (sessionsQuery.data?.items.find((item) => item.id === selectedSessionId) ?? detailQuery.data?.session ?? null) : null;
   const filteredSessions = useMemo(
     () => (sessionsQuery.data?.items ?? []).filter((session) => [session.title, session.last_message_content].join(' ').toLowerCase().includes(sessionSearch.toLowerCase())),
     [sessionSearch, sessionsQuery.data?.items],
   );
 
+  function stopStreamAnimation() {
+    if (streamIntervalRef.current) {
+      clearInterval(streamIntervalRef.current);
+      streamIntervalRef.current = null;
+    }
+  }
+
+  function flushStreamQueue(force = false) {
+    if (force) {
+      stopStreamAnimation();
+      if (!streamQueueRef.current.length) return;
+      const flushed = streamQueueRef.current.join('');
+      streamQueueRef.current = [];
+      setMessages((current) => current.map((message) => message.id === assistantMessageIdRef.current ? { ...message, content: `${message.content}${flushed}` } : message));
+      return;
+    }
+
+    if (streamIntervalRef.current || !streamQueueRef.current.length) {
+      return;
+    }
+
+    streamIntervalRef.current = setInterval(() => {
+      const nextDelta = streamQueueRef.current.shift();
+      if (!nextDelta) {
+        stopStreamAnimation();
+        return;
+      }
+      setMessages((current) => current.map((message) => message.id === assistantMessageIdRef.current ? { ...message, content: `${message.content}${nextDelta}` } : message));
+      if (!streamQueueRef.current.length) {
+        stopStreamAnimation();
+      }
+    }, 18);
+  }
+
   function startNewChat() {
+    stopStreamAnimation();
+    streamQueueRef.current = [];
+    setIsNewChatDraft(true);
     setSelectedSessionId(null);
     setMessages([]);
     setStreamError(null);
@@ -222,8 +271,11 @@ function AssistantView() {
 
     const userMessageId = `local-user-${Date.now()}`;
     const assistantMessageId = `local-assistant-${Date.now()}`;
+    assistantMessageIdRef.current = assistantMessageId;
     let nextSessionId = selectedSessionId;
 
+    stopStreamAnimation();
+    streamQueueRef.current = [];
     setDraft('');
     setStreamError(null);
     setStreaming(true);
@@ -250,6 +302,7 @@ function AssistantView() {
               case 'session.created': {
                 nextSessionId = event.session_id ?? ((event.data?.session as { id?: string } | undefined)?.id ?? null) ?? nextSessionId;
                 if (nextSessionId) setSelectedSessionId(nextSessionId);
+                setIsNewChatDraft(false);
                 break;
               }
               case 'retrieval.started':
@@ -263,26 +316,32 @@ function AssistantView() {
                 break;
               case 'content.delta': {
                 const delta = typeof event.data?.delta === 'string' ? event.data.delta : '';
-                setMessages((current) => current.map((message) => message.id === assistantMessageId ? { ...message, content: `${message.content}${delta}` } : message));
+                if (!delta) break;
+                streamQueueRef.current.push(delta);
+                flushStreamQueue();
                 break;
               }
               case 'citations.completed': {
                 const citations = Array.isArray(event.data?.citations) ? (event.data?.citations as ChatSource[]) : [];
-                setMessages((current) => current.map((message) => message.id === assistantMessageId ? { ...message, sources: citations } : message));
+                setMessages((current) => current.map((message) => message.id === assistantMessageIdRef.current ? { ...message, sources: citations } : message));
                 break;
               }
               case 'message.saved':
-                setMessages((current) => current.map((message) => message.id === assistantMessageId ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false } : message));
+                assistantMessageIdRef.current = event.message_id || assistantMessageIdRef.current;
+                setMessages((current) => current.map((message) => message.id === assistantMessageId || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false } : message));
                 break;
               case 'generation.completed':
+                flushStreamQueue(true);
                 setStreamStatus('Answer ready');
-                setMessages((current) => current.map((message) => message.id === assistantMessageId || message.id === event.message_id ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false } : message));
+                assistantMessageIdRef.current = event.message_id || assistantMessageIdRef.current;
+                setMessages((current) => current.map((message) => message.id === assistantMessageId || message.id === event.message_id || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false } : message));
                 break;
               case 'error': {
                 const detail = typeof event.data?.detail === 'string' ? event.data.detail : 'The chat request failed.';
                 setStreamError(detail);
                 setStreamStatus('Generation failed');
-                setMessages((current) => current.map((message) => message.id === assistantMessageId ? { ...message, status: 'failed', error_message: detail, isTransient: false } : message));
+                flushStreamQueue(true);
+                setMessages((current) => current.map((message) => message.id === assistantMessageIdRef.current || message.id === assistantMessageId ? { ...message, status: 'failed', error_message: detail, isTransient: false } : message));
                 break;
               }
               default:
@@ -294,9 +353,13 @@ function AssistantView() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The chat request failed.';
       setStreamError(message);
-      setMessages((current) => current.map((item) => item.id === assistantMessageId ? { ...item, status: 'failed', error_message: message, isTransient: false } : item));
+      flushStreamQueue(true);
+      setMessages((current) => current.map((item) => item.id === assistantMessageIdRef.current || item.id === assistantMessageId ? { ...item, status: 'failed', error_message: message, isTransient: false } : item));
     } finally {
       setStreaming(false);
+      if (!streamQueueRef.current.length) {
+        stopStreamAnimation();
+      }
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['chat-session-detail'] });
       queryClient.invalidateQueries({ queryKey: ['workspace-summary'] });
@@ -332,7 +395,7 @@ function AssistantView() {
               {filteredSessions.map((session) => {
                 const active = session.id === selectedSessionId;
                 return (
-                  <button key={session.id} onClick={() => setSelectedSessionId(session.id)} className={cn('w-full rounded-2xl px-4 py-3 text-left transition', active ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/6 hover:text-white')}>
+                  <button key={session.id} onClick={() => { setIsNewChatDraft(false); setSelectedSessionId(session.id); }} className={cn('w-full rounded-2xl px-4 py-3 text-left transition', active ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/6 hover:text-white')}>
                     <p className="truncate text-sm font-medium">{session.title || 'Untitled chat'}</p>
                     <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{session.last_message_content || 'Ready for the next grounded answer.'}</p>
                   </button>
