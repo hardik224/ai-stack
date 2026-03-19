@@ -576,10 +576,6 @@ function UploadsView() {
   const offset = (page - 1) * PAGE_SIZE;
   const uploads = useQuery({ queryKey: ['uploads', page], queryFn: () => fetchUploads(token, { limit: PAGE_SIZE, offset }) });
   const summary = useQuery({ queryKey: ['uploads-summary'], queryFn: () => fetchUploadSummary(token) });
-  const uploadLeaderboardData = (summary.data?.items ?? []).slice(0, 8).map((item) => ({
-    ...item,
-    ...getUserChartNames(item.full_name, item.email),
-  }));
   const filtered = useMemo(
     () =>
       (uploads.data?.items ?? []).filter((item) => {
@@ -626,30 +622,7 @@ function UploadsView() {
           <MetricCard title="Top uploader bytes" value={formatBytes(Math.max(...(summary.data?.items ?? []).map((item) => item.total_uploaded_bytes), 0))} helper="Largest upload footprint by a single user" icon={<Users className="size-5" />} />
           <MetricCard title="Unique uploaders" value={formatNumber(summary.data?.items?.filter((item) => item.file_count > 0).length)} helper="Users with at least one stored file" icon={<HardDriveDownload className="size-5" />} />
         </div>
-        <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
-          <Card>
-            <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Upload leaderboard</p>
-            <div className="mt-6 h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={uploadLeaderboardData}>
-                  <defs>
-                    <linearGradient id="uploadArea" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="#67e8f9" stopOpacity={0.5} />
-                      <stop offset="100%" stopColor="#67e8f9" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
-                  <XAxis dataKey="short_display_name" tick={{ fill: '#94a3b8', fontSize: 12 }} interval={0} angle={-20} height={70} />
-                  <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={(value) => `${Math.round(value / 1024)} KB`} />
-                  <Tooltip
-                    contentStyle={{ background: '#020617', border: '1px solid rgba(148,163,184,0.1)', borderRadius: 18 }}
-                    labelFormatter={(_, payload) => String(payload?.[0]?.payload?.display_name ?? '')}
-                  />
-                  <Area type="monotone" dataKey="total_uploaded_bytes" stroke="#67e8f9" fill="url(#uploadArea)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
+        <div>
           <Card>
             <div className="flex flex-col gap-4">
               <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-center">
