@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.services import admin_service
+from app.services import admin_service, llm_config_service
 
 
 
@@ -66,6 +66,36 @@ def get_process_summary():
 
 def get_recent_activity(limit: int, offset: int = 0):
     return admin_service.get_recent_activity(limit=limit, offset=offset)
+
+
+
+def get_llm_configs():
+    return llm_config_service.list_llm_configs()
+
+
+
+def get_active_llm_config():
+    return llm_config_service.get_active_llm_config_snapshot()
+
+
+
+def create_llm_config(payload, current_user: dict):
+    return llm_config_service.create_llm_config(payload=payload, current_user=current_user)
+
+
+
+def update_llm_config(config_id: UUID, payload, current_user: dict):
+    return llm_config_service.update_llm_config(config_id=config_id, payload=payload, current_user=current_user)
+
+
+
+def activate_llm_config(config_id: UUID, current_user: dict):
+    return llm_config_service.activate_llm_config(config_id=config_id, current_user=current_user)
+
+
+
+def delete_llm_config(config_id: UUID, current_user: dict):
+    return llm_config_service.delete_llm_config(config_id=config_id, current_user=current_user)
 
 
 

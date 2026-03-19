@@ -6,7 +6,8 @@ from typing import Protocol
 
 from openai import OpenAI
 
-from app.config.settings import Settings, get_settings
+from app.library import cache
+from app.services.llm_config_service import RuntimeLLMConfig, get_active_runtime_config
 
 try:
     from anthropic import Anthropic
@@ -27,28 +28,28 @@ class LLMProvider(Protocol):
 
 
 class OpenAICompatibleProvider:
-    def __init__(self, settings: Settings):
-        if not settings.llm_base_url:
-            raise RuntimeError('LLM_BASE_URL is required for openai_compatible provider.')
-        self.settings = settings
+    def __init__(self, config: RuntimeLLMConfig):
+        if not config.base_url:
+            raise RuntimeError('Base URL is required for openai_compatible provider.')
+        self.config = config
         self.client = OpenAI(
-            base_url=settings.llm_base_url,
-            api_key=settings.llm_api_key,
-            timeout=settings.llm_timeout_seconds,
+            base_url=config.base_url,
+            api_key=config.api_key or 'local-vllm-key',
+            timeout=config.timeout_seconds,
         )
 
     def stream_chat(self, request: LLMStreamRequest) -> Iterator[str]:
         request_args = {
-            'model': request.model or self.settings.llm_model,
+            'model': request.model or self.config.model,
             'messages': request.messages,
             'stream': True,
-            'temperature': _resolve_temperature(self.settings, request.mode),
-            'top_p': self.settings.llm_top_p,
-            'max_tokens': self.settings.llm_max_output_tokens,
+            'temperature': _resolve_temperature(self.config, request.mode),
+            'top_p': self.config.top_p,
+            'max_tokens': self.config.max_output_tokens,
         }
         extra_body = {}
-        if self.settings.llm_reasoning_effort:
-            extra_body['reasoning_effort'] = self.settings.llm_reasoning_effort
+        if self.config.reasoning_effort:
+            extra_body['reasoning_effort'] = self.config.reasoning_effort
         if extra_body:
             request_args['extra_body'] = extra_body
 
@@ -64,18 +65,18 @@ class OpenAICompatibleProvider:
 
 
 class OpenAIProvider:
-    def __init__(self, settings: Settings):
-        self.settings = settings
-        self.client = OpenAI(api_key=settings.llm_api_key, timeout=settings.llm_timeout_seconds)
+    def __init__(self, config: RuntimeLLMConfig):
+        self.config = config
+        self.client = OpenAI(api_key=config.api_key, timeout=config.timeout_seconds)
 
     def stream_chat(self, request: LLMStreamRequest) -> Iterator[str]:
         stream = self.client.chat.completions.create(
-            model=request.model or self.settings.llm_model,
+            model=request.model or self.config.model,
             messages=request.messages,
             stream=True,
-            temperature=_resolve_temperature(self.settings, request.mode),
-            top_p=self.settings.llm_top_p,
-            max_tokens=self.settings.llm_max_output_tokens,
+            temperature=_resolve_temperature(self.config, request.mode),
+            top_p=self.config.top_p,
+            max_tokens=self.config.max_output_tokens,
         )
         for chunk in stream:
             choices = getattr(chunk, 'choices', None) or []
@@ -88,11 +89,11 @@ class OpenAIProvider:
 
 
 class AnthropicProvider:
-    def __init__(self, settings: Settings):
+    def __init__(self, config: RuntimeLLMConfig):
         if Anthropic is None:
             raise RuntimeError('Anthropic provider selected but the anthropic package is not installed.')
-        self.settings = settings
-        self.client = Anthropic(api_key=settings.llm_api_key, timeout=settings.llm_timeout_seconds)
+        self.config = config
+        self.client = Anthropic(api_key=config.api_key, timeout=config.timeout_seconds)
 
     def stream_chat(self, request: LLMStreamRequest) -> Iterator[str]:
         system_message = ''
@@ -104,12 +105,12 @@ class AnthropicProvider:
             anthropic_messages.append({'role': message['role'], 'content': message['content']})
 
         with self.client.messages.stream(
-            model=request.model or self.settings.llm_model,
+            model=request.model or self.config.model,
             system=system_message,
             messages=anthropic_messages,
-            temperature=_resolve_temperature(self.settings, request.mode),
-            top_p=self.settings.llm_top_p,
-            max_tokens=self.settings.llm_max_output_tokens,
+            temperature=_resolve_temperature(self.config, request.mode),
+            top_p=self.config.top_p,
+            max_tokens=self.config.max_output_tokens,
         ) as stream:
             for event in stream:
                 if getattr(event, 'type', '') == 'content_block_delta':
@@ -120,54 +121,75 @@ class AnthropicProvider:
 
 
 _provider: LLMProvider | None = None
+_runtime_config: RuntimeLLMConfig | None = None
+_provider_signature: dict | None = None
+_provider_version: int | None = None
 
 
 
-def init_llm_client(settings: Settings | None = None) -> None:
-    global _provider
-    if _provider is not None:
-        return
-    resolved = settings or get_settings()
-    provider_name = resolved.llm_provider
+def _build_provider(config: RuntimeLLMConfig) -> LLMProvider:
+    provider_name = config.provider
     if provider_name == 'openai_compatible':
-        if not resolved.llm_base_url:
-            return
-        _provider = OpenAICompatibleProvider(resolved)
-        return
+        return OpenAICompatibleProvider(config)
     if provider_name == 'openai':
-        _provider = OpenAIProvider(resolved)
-        return
+        return OpenAIProvider(config)
     if provider_name == 'anthropic':
-        _provider = AnthropicProvider(resolved)
-        return
+        return AnthropicProvider(config)
     raise RuntimeError(f"Unsupported LLM provider '{provider_name}'.")
 
 
 
-def get_llm_client() -> LLMProvider:
-    global _provider
-    if _provider is None:
-        settings = get_settings()
-        init_llm_client(settings)
-        if _provider is None:
-            raise RuntimeError('LLM client is not configured. Set LLM_PROVIDER, LLM_BASE_URL, and LLM_MODEL.')
+def init_llm_client(settings=None) -> None:
+    try:
+        get_runtime_llm_config()
+        get_llm_client()
+    except Exception:
+        return
+
+
+
+def get_runtime_llm_config() -> RuntimeLLMConfig:
+    global _runtime_config, _provider_version
+    current_version = cache.get_llm_config_version()
+    if _runtime_config is not None and _provider_version == current_version:
+        return _runtime_config
+    runtime_config = get_active_runtime_config()
+    _runtime_config = runtime_config
+    _provider_version = current_version
+    return runtime_config
+
+
+
+def get_llm_client(runtime_config: RuntimeLLMConfig | None = None) -> LLMProvider:
+    global _provider, _provider_signature, _provider_version, _runtime_config
+    resolved = runtime_config or get_runtime_llm_config()
+    current_version = cache.get_llm_config_version()
+    signature = resolved.signature()
+    if _provider is None or _provider_signature != signature or _provider_version != current_version:
+        _provider = _build_provider(resolved)
+        _provider_signature = signature
+        _provider_version = current_version
+        _runtime_config = resolved
     return _provider
 
 
 
 def close_llm_client() -> None:
-    global _provider
+    global _provider, _runtime_config, _provider_signature, _provider_version
     _provider = None
+    _runtime_config = None
+    _provider_signature = None
+    _provider_version = None
 
 
 
-def stream_markdown_answer(messages: list[dict[str, str]], *, mode: str) -> Iterator[str]:
+def stream_markdown_answer(messages: list[dict[str, str]], *, mode: str, runtime_config: RuntimeLLMConfig | None = None) -> Iterator[str]:
     request = LLMStreamRequest(messages=messages, mode=mode)
-    yield from get_llm_client().stream_chat(request)
+    yield from get_llm_client(runtime_config=runtime_config).stream_chat(request)
 
 
 
-def _resolve_temperature(settings: Settings, mode: str) -> float:
+def _resolve_temperature(config: RuntimeLLMConfig, mode: str) -> float:
     if mode == 'analysis':
-        return max(0.2, min(settings.llm_temperature, 0.5))
-    return settings.llm_temperature
+        return max(0.2, min(config.temperature, 0.5))
+    return config.temperature

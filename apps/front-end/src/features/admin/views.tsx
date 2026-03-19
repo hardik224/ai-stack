@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Activity, ArrowRight, Bot, Boxes, ChevronLeft, ChevronRight, DatabaseZap, FileClock, Filter, FolderKanban, HardDriveDownload, MessageSquareText, ShieldCheck, Trash2, UploadCloud, UserPlus, Users } from 'lucide-react';
+import { Activity, ArrowRight, Bot, Boxes, ChevronLeft, ChevronRight, Cpu, DatabaseZap, FileClock, Filter, FolderKanban, HardDriveDownload, MessageSquareText, Pencil, Power, ShieldCheck, Trash2, UploadCloud, UserPlus, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Area, AreaChart } from 'recharts';
@@ -12,13 +12,17 @@ import ReactMarkdown from 'react-markdown';
 import { useAuth } from '@/components/auth-provider';
 import { Card, EmptyState, ErrorState, MetricCard, ProgressBar, SearchInput, SectionHeading, SkeletonCard, StatusBadge, TableShell, formatBytes, formatDateTime, formatNumber, titleize } from '@/components/ui';
 import {
+  activateLlmConfig,
+  createLlmConfig,
   createUser,
   deleteChats,
   deleteCollections,
   deleteFiles,
   deleteJobs,
+  deleteLlmConfig,
   deleteProcesses,
   deleteUsers,
+  fetchActiveLlmConfig,
   fetchActivity,
   fetchAdminUser,
   fetchAdminUsers,
@@ -29,13 +33,15 @@ import {
   fetchJobDetail,
   fetchJobs,
   fetchJobSummary,
+  fetchLlmConfigs,
   fetchProcessSummary,
   fetchProcesses,
   fetchUploads,
   fetchUploadSummary,
+  updateLlmConfig,
   uploadFile,
 } from '@/features/admin/data';
-import type { CreateUserPayload, UserRole } from '@/features/admin/types';
+import type { CreateUserPayload, LlmConfigItem, LlmConfigPayload, LlmProviderType, UserRole } from '@/features/admin/types';
 import { cn } from '@/lib/utils';
 
 const CHART_COLORS = ['#67e8f9', '#38bdf8', '#818cf8', '#a78bfa', '#f0abfc'];
@@ -1077,6 +1083,226 @@ function ChatDetailView({ id }: { id: string }) {
   );
 }
 
+
+function createLlmFormState(config?: LlmConfigItem): LlmConfigPayload {
+  return {
+    name: config?.name ?? '',
+    provider: config?.provider ?? 'anthropic',
+    base_url: config?.base_url ?? '',
+    api_key: '',
+    clear_api_key: false,
+    model: config?.model ?? '',
+    timeout_seconds: config?.timeout_seconds ?? 180,
+    max_output_tokens: config?.max_output_tokens ?? 1400,
+    temperature: config?.temperature ?? 0.6,
+    top_p: config?.top_p ?? 0.95,
+    reasoning_effort: config?.reasoning_effort ?? '',
+    is_enabled: config?.is_enabled ?? true,
+    activate: config?.is_active ?? false,
+    metadata: config?.metadata ?? {},
+  };
+}
+
+function ModelsView() {
+  const token = useToken();
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [providerFilter, setProviderFilter] = useState<LlmProviderType | ''>('');
+  const [page, setPage] = useState(1);
+  const [open, setOpen] = useState(false);
+  const [editingConfig, setEditingConfig] = useState<LlmConfigItem | null>(null);
+  const [form, setForm] = useState<LlmConfigPayload>(() => createLlmFormState());
+  const configsQuery = useQuery({ queryKey: ['llm-configs'], queryFn: () => fetchLlmConfigs(token) });
+  const activeQuery = useQuery({ queryKey: ['llm-active'], queryFn: () => fetchActiveLlmConfig(token) });
+
+  const filteredItems = useMemo(
+    () =>
+      (configsQuery.data?.items ?? []).filter((item) => {
+        const matchesSearch = [item.name, item.provider, item.model, item.base_url, item.api_key_masked].join(' ').toLowerCase().includes(search.toLowerCase());
+        const matchesProvider = !providerFilter || item.provider === providerFilter;
+        return matchesSearch && matchesProvider;
+      }),
+    [configsQuery.data?.items, providerFilter, search],
+  );
+  const pagedItems = useMemo(() => filteredItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filteredItems, page]);
+
+  const createMutation = useMutation({
+    mutationFn: (payload: LlmConfigPayload) => createLlmConfig(token, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['llm-configs'] });
+      queryClient.invalidateQueries({ queryKey: ['llm-active'] });
+      setOpen(false);
+      setEditingConfig(null);
+      setForm(createLlmFormState());
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ configId, payload }: { configId: string; payload: LlmConfigPayload }) => updateLlmConfig(token, configId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['llm-configs'] });
+      queryClient.invalidateQueries({ queryKey: ['llm-active'] });
+      setOpen(false);
+      setEditingConfig(null);
+      setForm(createLlmFormState());
+    },
+  });
+
+  const activateMutation = useMutation({
+    mutationFn: (configId: string) => activateLlmConfig(token, configId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['llm-configs'] });
+      queryClient.invalidateQueries({ queryKey: ['llm-active'] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (configId: string) => deleteLlmConfig(token, configId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['llm-configs'] });
+      queryClient.invalidateQueries({ queryKey: ['llm-active'] });
+    },
+  });
+
+  function openCreateDialog() {
+    setEditingConfig(null);
+    setForm(createLlmFormState());
+    setOpen(true);
+  }
+
+  function openEditDialog(config: LlmConfigItem) {
+    setEditingConfig(config);
+    setForm(createLlmFormState(config));
+    setOpen(true);
+  }
+
+  async function handleSubmit() {
+    if (!form.name.trim() || !form.model.trim()) return;
+    if (editingConfig) {
+      await updateMutation.mutateAsync({ configId: editingConfig.id, payload: form });
+      return;
+    }
+    await createMutation.mutateAsync(form);
+  }
+
+  async function handleDelete(config: LlmConfigItem) {
+    if (!window.confirm(`Delete LLM config '${config.name}'?`)) return;
+    await deleteMutation.mutateAsync(config.id);
+  }
+
+  const active = activeQuery.data ?? configsQuery.data?.items.find((item) => item.is_active) ?? null;
+  const pending = createMutation.isPending || updateMutation.isPending;
+
+  return (
+    <div className="space-y-6">
+      <SectionHeading eyebrow="Inference control" title="Models and providers" description="Create cloud or self-hosted LLM configs, then switch the active provider for new chat requests without restarting the API." action={<button onClick={openCreateDialog} className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-5 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/15"><Cpu className="size-4" />Add model config</button>} />
+      <QueryBoundary isLoading={configsQuery.isLoading || activeQuery.isLoading} error={configsQuery.error || activeQuery.error} onRetry={() => { configsQuery.refetch(); activeQuery.refetch(); }}>
+        {active ? (
+          <Card>
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Active runtime</p>
+                <h3 className="mt-3 text-2xl font-semibold text-white">{active.name}</h3>
+                <p className="mt-2 text-sm text-slate-400">{active.provider} | {active.model}</p>
+                <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-400">Changes here apply to new `/chat` requests immediately. No API restart is required. Use `openai_compatible` for self-hosted providers like vLLM, Ollama bridges, or other OpenAI-style local inference servers.</p>
+              </div>
+              <div className="grid gap-3 text-sm text-slate-300">
+                <div className="flex items-center gap-2"><StatusBadge value={active.is_active ? 'active' : 'inactive'} /><StatusBadge value={active.provider} /></div>
+                <p>URL: <span className="text-white">{active.base_url || 'Provider default'}</span></p>
+                <p>Key: <span className="text-white">{active.api_key_masked || 'Not set'}</span></p>
+                <p>Tokens: <span className="text-white">{formatNumber(active.max_output_tokens)}</span> | Timeout: <span className="text-white">{active.timeout_seconds}s</span></p>
+              </div>
+            </div>
+          </Card>
+        ) : null}
+
+        <Card>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
+            <SearchInput value={search} onChange={(value) => { setSearch(value); setPage(1); }} placeholder="Search configs by name, provider, model, or base URL" />
+            <select value={providerFilter} onChange={(event) => { setProviderFilter(event.target.value as LlmProviderType | ''); setPage(1); }} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none">
+              <option value="">All providers</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="openai">OpenAI</option>
+              <option value="openai_compatible">OpenAI Compatible / Self-hosted</option>
+            </select>
+          </div>
+          <div className="mt-5">
+            {pagedItems.length ? (
+              <>
+                <div className="grid gap-5 xl:grid-cols-2">
+                  {pagedItems.map((config) => (
+                    <Card key={config.id} className="bg-white/4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-xl font-semibold text-white">{config.name}</h3>
+                            {config.is_active ? <StatusBadge value="active" /> : null}
+                            {!config.is_enabled ? <StatusBadge value="disabled" /> : null}
+                          </div>
+                          <p className="mt-2 text-sm text-slate-400">{config.provider} | {config.model}</p>
+                        </div>
+                        <Cpu className="size-5 text-slate-400" />
+                      </div>
+                      <div className="mt-5 space-y-2 text-sm text-slate-300">
+                        <p>Base URL: <span className="text-white">{config.base_url || 'Provider default'}</span></p>
+                        <p>API Key: <span className="text-white">{config.api_key_masked || 'Not set'}</span></p>
+                        <p>Timeout: <span className="text-white">{config.timeout_seconds}s</span> | Max tokens: <span className="text-white">{formatNumber(config.max_output_tokens)}</span></p>
+                        <p>Temperature: <span className="text-white">{config.temperature}</span> | Top P: <span className="text-white">{config.top_p}</span></p>
+                      </div>
+                      <div className="mt-6 flex flex-wrap items-center gap-3">
+                        {!config.is_active ? <button onClick={() => activateMutation.mutate(config.id)} disabled={activateMutation.isPending} className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-400/15 disabled:opacity-60"><Power className="size-4" />Activate</button> : null}
+                        <button onClick={() => openEditDialog(config)} className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/5"><Pencil className="size-4" />Edit</button>
+                        <button onClick={() => handleDelete(config)} disabled={config.is_active || deleteMutation.isPending} className="inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-100 transition hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-60"><Trash2 className="size-4" />Delete</button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+                <PaginationControls page={page} pageSize={PAGE_SIZE} itemCount={pagedItems.length} hasNext={page * PAGE_SIZE < filteredItems.length} onPrevious={() => setPage((current) => Math.max(1, current - 1))} onNext={() => setPage((current) => current + 1)} />
+              </>
+            ) : (
+              <EmptyState title="No model configs matched the current filter" description="Create a provider config or broaden the search to inspect available runtime options." />
+            )}
+          </div>
+        </Card>
+      </QueryBoundary>
+
+      {open ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-md">
+          <Card className="w-full max-w-3xl p-6">
+            <SectionHeading eyebrow="Runtime config" title={editingConfig ? 'Edit model config' : 'Create model config'} description="Switching the active config changes the LLM backend for new chat requests immediately. Use OpenAI Compatible for self-hosted endpoints like vLLM later." />
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Display name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+              <select value={form.provider} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value as LlmProviderType }))} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none">
+                <option value="anthropic">Anthropic / Claude</option>
+                <option value="openai">OpenAI</option>
+                <option value="openai_compatible">OpenAI Compatible / Self-hosted</option>
+              </select>
+              <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none md:col-span-2" placeholder="Model name" value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))} />
+              <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none md:col-span-2" placeholder="Base URL (required for self-hosted / openai_compatible)" value={form.base_url ?? ''} onChange={(event) => setForm((current) => ({ ...current, base_url: event.target.value }))} />
+              <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none md:col-span-2" placeholder={editingConfig ? 'Leave blank to keep existing key' : 'API key'} value={form.api_key ?? ''} onChange={(event) => setForm((current) => ({ ...current, api_key: event.target.value }))} />
+              <input type="number" min={1} max={600} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Timeout seconds" value={form.timeout_seconds} onChange={(event) => setForm((current) => ({ ...current, timeout_seconds: Number(event.target.value || 0) }))} />
+              <input type="number" min={1} max={32768} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Max output tokens" value={form.max_output_tokens} onChange={(event) => setForm((current) => ({ ...current, max_output_tokens: Number(event.target.value || 0) }))} />
+              <input type="number" step="0.1" min={0} max={2} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Temperature" value={form.temperature} onChange={(event) => setForm((current) => ({ ...current, temperature: Number(event.target.value || 0) }))} />
+              <input type="number" step="0.05" min={0} max={1} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Top P" value={form.top_p} onChange={(event) => setForm((current) => ({ ...current, top_p: Number(event.target.value || 0) }))} />
+              <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none md:col-span-2" placeholder="Reasoning effort (optional)" value={form.reasoning_effort ?? ''} onChange={(event) => setForm((current) => ({ ...current, reasoning_effort: event.target.value }))} />
+            </div>
+            <div className="mt-5 flex flex-wrap items-center gap-4 text-sm text-slate-300">
+              <label className="inline-flex items-center gap-2"><input type="checkbox" checked={form.is_enabled} onChange={(event) => setForm((current) => ({ ...current, is_enabled: event.target.checked }))} />Enabled</label>
+              <label className="inline-flex items-center gap-2"><input type="checkbox" checked={form.activate} onChange={(event) => setForm((current) => ({ ...current, activate: event.target.checked }))} />Activate after save</label>
+              {editingConfig ? <label className="inline-flex items-center gap-2"><input type="checkbox" checked={Boolean(form.clear_api_key)} onChange={(event) => setForm((current) => ({ ...current, clear_api_key: event.target.checked }))} />Clear stored API key</label> : null}
+            </div>
+            {createMutation.error || updateMutation.error ? <p className="mt-4 text-sm text-rose-300">{(createMutation.error || updateMutation.error)?.message}</p> : null}
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button onClick={() => { setOpen(false); setEditingConfig(null); setForm(createLlmFormState()); }} className="rounded-full border border-white/10 px-5 py-3 text-sm text-slate-300 transition hover:bg-white/5">Cancel</button>
+              <button onClick={handleSubmit} disabled={pending || !form.name.trim() || !form.model.trim()} className="rounded-full bg-gradient-to-r from-cyan-400 to-indigo-400 px-5 py-3 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-60">{pending ? 'Saving...' : editingConfig ? 'Save changes' : 'Create config'}</button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function CollectionsView() {
   const token = useToken();
   const queryClient = useQueryClient();
@@ -1132,7 +1358,7 @@ function CollectionsView() {
             <option value="">All visibility</option>
             <option value="private">Private</option>
             <option value="internal">Internal</option>
-            <option value="public">Public</option>
+            <option value="shared">Shared</option>
           </select>
           <button onClick={toggleSelectVisible} className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/5">Select visible</button>
         </div>
@@ -1196,6 +1422,8 @@ export function SectionIndexView({ section }: { section: string }) {
       return <ChatsView />;
     case 'collections':
       return <CollectionsView />;
+    case 'models':
+      return <ModelsView />;
     default:
       return <EmptyState title="Unknown admin section" description="This route does not map to a configured admin view yet." />;
   }

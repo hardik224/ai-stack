@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.controllers import admin_controller
 from app.middleware.auth import require_roles
-from app.schemas.admin import BulkDeleteRequest
+from app.schemas.admin import BulkDeleteRequest, LlmConfigCreateRequest, LlmConfigUpdateRequest
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -132,6 +132,36 @@ def delete_process(process_id: UUID, current_user: dict = Depends(require_roles(
 @router.get("/activity/recent", dependencies=[admin_required])
 def get_recent_activity(limit: int = Query(default=20), offset: int = Query(default=0)):
     return admin_controller.get_recent_activity(limit=limit, offset=offset)
+
+
+@router.get("/llm/configs", dependencies=[admin_required])
+def get_llm_configs():
+    return admin_controller.get_llm_configs()
+
+
+@router.get("/llm/active", dependencies=[admin_required])
+def get_active_llm_config():
+    return admin_controller.get_active_llm_config()
+
+
+@router.post("/llm/configs", dependencies=[admin_required])
+def create_llm_config(payload: LlmConfigCreateRequest, current_user: dict = Depends(require_roles("admin"))):
+    return admin_controller.create_llm_config(payload=payload, current_user=current_user)
+
+
+@router.put("/llm/configs/{config_id}", dependencies=[admin_required])
+def update_llm_config(config_id: UUID, payload: LlmConfigUpdateRequest, current_user: dict = Depends(require_roles("admin"))):
+    return admin_controller.update_llm_config(config_id=config_id, payload=payload, current_user=current_user)
+
+
+@router.post("/llm/configs/{config_id}/activate", dependencies=[admin_required])
+def activate_llm_config(config_id: UUID, current_user: dict = Depends(require_roles("admin"))):
+    return admin_controller.activate_llm_config(config_id=config_id, current_user=current_user)
+
+
+@router.delete("/llm/configs/{config_id}", dependencies=[admin_required])
+def delete_llm_config(config_id: UUID, current_user: dict = Depends(require_roles("admin"))):
+    return admin_controller.delete_llm_config(config_id=config_id, current_user=current_user)
 
 
 @router.post("/collections/bulk-delete", dependencies=[admin_required])

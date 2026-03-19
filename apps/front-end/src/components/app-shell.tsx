@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Activity, BookCopy, Boxes, ChevronRight, DatabaseZap, LayoutDashboard, LogOut, MessageSquareText, Upload, Users } from 'lucide-react';
+import { Activity, BookCopy, Boxes, ChevronRight, Cpu, DatabaseZap, LayoutDashboard, LogOut, MessageSquareText, Upload, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo } from 'react';
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: '/activity', label: 'Activity', icon: Activity },
   { href: '/chats', label: 'Chats', icon: MessageSquareText },
   { href: '/collections', label: 'Collections', icon: BookCopy },
+  { href: '/models', label: 'Models', icon: Cpu },
 ];
 
 function pathLabel(pathname: string) {

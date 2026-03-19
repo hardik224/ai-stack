@@ -15,7 +15,7 @@ from app.library.sse import format_sse_comment, format_sse_event
 from app.models import chat_model
 from app.services import citation_service, retrieval_service
 from app.services.activity_service import record_activity
-from app.services.llm_service import stream_markdown_answer
+from app.services.llm_service import get_runtime_llm_config, stream_markdown_answer
 from app.services.prompt_service import build_chat_prompt, build_insufficient_evidence_markdown, suggest_session_title
 
 
@@ -73,6 +73,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
     user_message = None
     assistant_message = None
     mode = payload.mode or settings.chat_default_mode
+    runtime_llm = get_runtime_llm_config()
 
     try:
         effective_collection_id = payload.collection_id
@@ -166,7 +167,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
             metadata={
                 'stream': {'state': 'started'},
                 'mode': mode,
-                'llm': {'provider': settings.llm_provider, 'model': settings.llm_model},
+                'llm': {'provider': runtime_llm.provider, 'model': runtime_llm.model, 'config_name': runtime_llm.name},
             },
             status='streaming',
             error_message=None,
@@ -398,8 +399,8 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 {
                     'mode': mode,
                     'generation_mode': generation_mode,
-                    'backend': settings.llm_provider,
-                    'model': settings.llm_model,
+                    'backend': runtime_llm.provider,
+                    'model': runtime_llm.model,
                     'cache': cache_state['prompt'],
                 },
                 session_id=str(session_id),
@@ -409,7 +410,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
             generation_start = time.perf_counter()
             llm_error = None
             try:
-                for delta in stream_markdown_answer(prompt_messages, mode=mode):
+                for delta in stream_markdown_answer(prompt_messages, mode=mode, runtime_config=runtime_llm):
                     if not delta:
                         continue
                     answer_parts.append(delta)
@@ -453,8 +454,8 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 'format': 'markdown',
                 'streamed': True,
                 'mode': generation_mode,
-                'provider': settings.llm_provider if generation_mode == 'llm' else 'deterministic',
-                'model': settings.llm_model if generation_mode == 'llm' else None,
+                'provider': runtime_llm.provider if generation_mode == 'llm' else 'deterministic',
+                'model': runtime_llm.model if generation_mode == 'llm' else None,
             },
             'retrieval': {
                 'query': retrieval['query'],
@@ -505,8 +506,9 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 'session_id': str(session_id),
                 'citation_count': len(answer_citations),
                 'generation_mode': generation_mode,
-                'llm_provider': settings.llm_provider,
-                'llm_model': settings.llm_model,
+                'llm_provider': runtime_llm.provider,
+                'llm_model': runtime_llm.model,
+                'llm_config_name': runtime_llm.name,
                 'mode': mode,
                 'total_ms': total_ms,
                 'cache': cache_state,

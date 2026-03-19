@@ -14,6 +14,7 @@ PROMPT_VERSION = 'v1'
 ANSWER_VERSION = 'v1'
 GLOBAL_VERSION_KEY = f'{CACHE_NAMESPACE}:cache_version:global'
 COLLECTION_VERSION_PREFIX = f'{CACHE_NAMESPACE}:cache_version:collection'
+LLM_CONFIG_VERSION_KEY = f'{CACHE_NAMESPACE}:llm_config:version'
 
 
 
@@ -88,6 +89,11 @@ def get_collection_cache_version(collection_id: UUID | str | None) -> int:
         return get_global_cache_version()
     key = f'{COLLECTION_VERSION_PREFIX}:{collection_id}'
     return get_int(key, default=1)
+
+
+
+def get_llm_config_version() -> int:
+    return get_int(LLM_CONFIG_VERSION_KEY, default=1)
 
 
 

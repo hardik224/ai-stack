@@ -26,8 +26,7 @@ export function MetricCard({ title, value, helper, accent, icon, href }: { title
     <Card className={cn('relative overflow-hidden', href ? 'transition hover:border-cyan-300/20 hover:bg-white/8' : '')}>
       <div className={cn('absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-cyan-400/0 via-cyan-300/70 to-fuchsia-400/0', accent)} />
       {href ? (
-        <div className="absolute right-5 top-5 flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-cyan-200/70">
-          <span>Open</span>
+        <div className="absolute right-5 top-5 text-cyan-200/70">
           <ArrowUpRight className="size-4 transition-transform duration-200 group-hover:translate-x-1 group-hover:-translate-y-1" />
         </div>
       ) : null}

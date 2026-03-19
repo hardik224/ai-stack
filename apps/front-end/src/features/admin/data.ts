@@ -6,9 +6,13 @@ import type {
   CollectionItem,
   CreateUserPayload,
   DashboardSummary,
+  DeleteResponse,
   JobDetailResponse,
   JobItem,
   JobSummary,
+  LlmConfigItem,
+  LlmConfigListResponse,
+  LlmConfigPayload,
   LoginResponse,
   PaginatedResponse,
   ProcessItem,
@@ -16,7 +20,6 @@ import type {
   UploadItem,
   UploadSummaryItem,
   AdminUserItem,
-  DeleteResponse,
 } from '@/features/admin/types';
 
 const API_PREFIX = process.env.NEXT_PUBLIC_API_PROXY_PREFIX || '/proxy';
@@ -76,7 +79,6 @@ async function requestJson<T>(path: string, init: RequestInit = {}, token?: stri
 
   return payload as T;
 }
-
 
 async function requestForm<T>(path: string, formData: FormData, token?: string): Promise<T> {
   const headers = new Headers();
@@ -160,7 +162,7 @@ export async function fetchUploadSummary(token: string) {
 }
 
 export async function fetchJobs(token: string, query?: { limit?: number; offset?: number; status?: string }) {
-  return requestJson<PaginatedResponse<JobItem> & { status?: string }> (buildUrl('/admin/jobs', query), { method: 'GET' }, token);
+  return requestJson<PaginatedResponse<JobItem> & { status?: string }>(buildUrl('/admin/jobs', query), { method: 'GET' }, token);
 }
 
 export async function fetchJobSummary(token: string) {
@@ -199,6 +201,29 @@ export async function fetchFiles(token: string, query?: { limit?: number; offset
   return requestJson<PaginatedResponse<UploadItem>>(buildUrl('/files', query), { method: 'GET' }, token);
 }
 
+export async function fetchLlmConfigs(token: string) {
+  return requestJson<LlmConfigListResponse>('/admin/llm/configs', { method: 'GET' }, token);
+}
+
+export async function fetchActiveLlmConfig(token: string) {
+  return requestJson<LlmConfigItem>('/admin/llm/active', { method: 'GET' }, token);
+}
+
+export async function createLlmConfig(token: string, payload: LlmConfigPayload) {
+  return requestJson<LlmConfigItem>('/admin/llm/configs', { method: 'POST', body: JSON.stringify(payload) }, token);
+}
+
+export async function updateLlmConfig(token: string, configId: string, payload: LlmConfigPayload) {
+  return requestJson<LlmConfigItem>(`/admin/llm/configs/${configId}`, { method: 'PUT', body: JSON.stringify(payload) }, token);
+}
+
+export async function activateLlmConfig(token: string, configId: string) {
+  return requestJson<LlmConfigItem>(`/admin/llm/configs/${configId}/activate`, { method: 'POST' }, token);
+}
+
+export async function deleteLlmConfig(token: string, configId: string) {
+  return requestJson<DeleteResponse>(`/admin/llm/configs/${configId}`, { method: 'DELETE' }, token);
+}
 
 export async function uploadFile(token: string, payload: { collectionId: string; file: File }) {
   const formData = new FormData();

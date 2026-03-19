@@ -1,4 +1,5 @@
 export type UserRole = 'admin' | 'internal_user' | 'user';
+export type LlmProviderType = 'anthropic' | 'openai' | 'openai_compatible';
 
 export interface AuthUser {
   id: string;
@@ -284,6 +285,50 @@ export interface CollectionItem {
   created_at?: string;
   updated_at?: string | null;
   file_count?: number;
+}
+
+export interface LlmConfigItem {
+  id: string;
+  name: string;
+  provider: LlmProviderType;
+  base_url?: string | null;
+  model: string;
+  timeout_seconds: number;
+  max_output_tokens: number;
+  temperature: number;
+  top_p: number;
+  reasoning_effort?: string | null;
+  is_active: boolean;
+  is_enabled: boolean;
+  metadata?: Record<string, unknown>;
+  has_api_key: boolean;
+  api_key_masked?: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface LlmConfigListResponse {
+  items: LlmConfigItem[];
+  active_config_id?: string | null;
+}
+
+export interface LlmConfigPayload {
+  name: string;
+  provider: LlmProviderType;
+  base_url?: string | null;
+  api_key?: string | null;
+  clear_api_key?: boolean;
+  model: string;
+  timeout_seconds: number;
+  max_output_tokens: number;
+  temperature: number;
+  top_p: number;
+  reasoning_effort?: string | null;
+  is_enabled: boolean;
+  activate: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CreateUserPayload {
