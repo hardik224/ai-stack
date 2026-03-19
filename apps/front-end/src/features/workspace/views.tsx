@@ -468,24 +468,33 @@ function AssistantView() {
           )}
         </div>
 
-        <div className="border-t border-white/10 px-3 py-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
-            <p className="truncate text-sm font-medium text-white">{user?.full_name || user?.email}</p>
-            <p className="mt-1 truncate text-xs text-slate-500">{user?.email}</p>
-            <div className="mt-3 flex items-center gap-2">
-              <StatusBadge value={user?.role || 'user'} />
-              {user?.role !== 'user' ? <Link href="/dashboard" className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-slate-300 transition hover:bg-white/5 hover:text-white">Dashboard</Link> : null}
-              <button
-                onClick={() => {
-                  logout();
-                  window.location.href = '/login';
-                }}
-                className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-slate-300 transition hover:bg-white/5"
-              >
-                <LogOut className="size-3" />
-                Logout
-              </button>
+        <div className="border-t border-white/10 px-3 py-2.5">
+          <div className="flex items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2.5">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-[#2a2a2a] text-xs font-semibold text-white">
+                {(user?.full_name || user?.email || 'U').trim().slice(0, 1).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-white">{user?.full_name || 'Workspace user'}</p>
+                <p className="truncate text-[11px] text-slate-500">{user?.email}</p>
+              </div>
             </div>
+            {user?.role !== 'user' ? (
+              <Link href="/dashboard" className="inline-flex h-8 items-center rounded-full border border-white/10 px-3 text-[11px] text-slate-300 transition hover:bg-white/5 hover:text-white">
+                Dashboard
+              </Link>
+            ) : null}
+            <button
+              onClick={() => {
+                logout();
+                window.location.href = '/login';
+              }}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:bg-white/5 hover:text-white"
+              aria-label="Logout"
+              title="Logout"
+            >
+              <LogOut className="size-3.5" />
+            </button>
           </div>
         </div>
       </aside>
