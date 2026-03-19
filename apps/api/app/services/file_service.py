@@ -13,7 +13,12 @@ from app.models import collection_model, file_model, job_model
 from app.services.activity_service import record_activity
 
 
-ALLOWED_UPLOAD_EXTENSIONS = {'.pdf': 'application/pdf', '.csv': 'text/csv'}
+ALLOWED_UPLOAD_TYPES = {
+    '.pdf': {'content_type': 'application/pdf', 'source_type': 'pdf'},
+    '.csv': {'content_type': 'text/csv', 'source_type': 'csv'},
+    '.xlsx': {'content_type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'source_type': 'excel'},
+    '.xls': {'content_type': 'application/vnd.ms-excel', 'source_type': 'excel'},
+}
 
 
 def resolve_upload_collection(*, collection_id: UUID | None, current_user: dict, conn=None) -> tuple[dict, bool]:
@@ -49,7 +54,7 @@ def upload_file_to_collection(*, collection_id: UUID | None, upload: UploadFile,
 
     original_name = sanitize_filename(upload.filename or 'upload')
     extension = Path(original_name).suffix.lower()
-    require_condition(extension in ALLOWED_UPLOAD_EXTENSIONS, 'Only PDF and CSV uploads are supported.')
+    require_condition(extension in ALLOWED_UPLOAD_TYPES, 'Only PDF, CSV, and Excel uploads are supported.')
 
     content = upload.file.read()
     require_condition(bool(content), 'Uploaded file is empty.')
@@ -58,11 +63,12 @@ def upload_file_to_collection(*, collection_id: UUID | None, upload: UploadFile,
         f'File exceeds the maximum size of {settings.max_upload_size_bytes} bytes.',
     )
 
-    content_type = upload.content_type or ALLOWED_UPLOAD_EXTENSIONS[extension]
+    upload_type = ALLOWED_UPLOAD_TYPES[extension]
+    content_type = upload.content_type or upload_type['content_type']
     checksum_sha256 = hashlib.sha256(content).hexdigest()
     file_id = uuid4()
     job_id = uuid4()
-    source_type = extension.replace('.', '')
+    source_type = upload_type['source_type']
     object_key = f"collections/{collection['id']}/{utcnow().strftime('%Y/%m/%d')}/{file_id}{extension}"
 
     upload_bytes(

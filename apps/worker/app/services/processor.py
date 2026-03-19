@@ -9,6 +9,7 @@ from app.library.redis_client import close_redis_client, init_redis_client
 from app.library.storage import close_storage_client, download_bytes, init_storage_client
 from app.services.chunking_service import chunk_parsed_units, chunk_to_dict
 from app.services.csv_processor import parse_csv_bytes
+from app.services.excel_processor import parse_excel_bytes
 from app.services.embedding_service import embed_in_batches
 from app.services.indexing_service import upsert_chunk_vectors
 from app.services.pdf_processor import parse_pdf_bytes
@@ -19,6 +20,11 @@ SUPPORTED_CONTENT_TYPES = {
     'application/pdf': 'pdf',
     'text/csv': 'csv',
     'application/csv': 'csv',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'excel',
+    'application/vnd.ms-excel': 'excel',
+    'application/excel': 'excel',
+    'application/x-excel': 'excel',
+    'application/x-msexcel': 'excel',
 }
 
 
@@ -237,6 +243,8 @@ def _parse_file(*, job: dict, content: bytes) -> dict:
         return parse_pdf_bytes(content)
     if source_type == 'csv':
         return parse_csv_bytes(content)
+    if source_type == 'excel':
+        return parse_excel_bytes(content)
     raise ValueError(f"Unsupported content type '{job['content_type']}'.")
 
 

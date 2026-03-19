@@ -18,7 +18,7 @@ BEGIN
     ) THEN
         ALTER TABLE files
             ADD CONSTRAINT files_source_type_check
-            CHECK (source_type IN ('pdf', 'csv'));
+            CHECK (source_type IN ('pdf', 'csv', 'excel'));
     END IF;
 
     IF NOT EXISTS (
@@ -47,6 +47,7 @@ SET source_type = CASE
     WHEN source_type IS NOT NULL THEN source_type
     WHEN content_type = 'application/pdf' OR LOWER(original_name) LIKE '%.pdf' THEN 'pdf'
     WHEN content_type IN ('text/csv', 'application/csv') OR LOWER(original_name) LIKE '%.csv' THEN 'csv'
+    WHEN content_type IN ('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'application/excel', 'application/x-excel', 'application/x-msexcel') OR LOWER(original_name) LIKE '%.xlsx' OR LOWER(original_name) LIKE '%.xls' THEN 'excel'
     ELSE 'pdf'
 END
 WHERE source_type IS NULL;
@@ -96,7 +97,7 @@ BEGIN
     ) THEN
         ALTER TABLE chunks
             ADD CONSTRAINT chunks_source_type_check
-            CHECK (source_type IN ('pdf', 'csv'));
+            CHECK (source_type IN ('pdf', 'csv', 'excel'));
     END IF;
 END $$;
 

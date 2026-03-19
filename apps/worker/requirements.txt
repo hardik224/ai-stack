@@ -4,3 +4,6 @@ boto3==1.37.16
 pypdf==6.9.1
 fastembed==0.7.4
 qdrant-client==1.17.1
+pandas==2.3.2
+openpyxl==3.1.5
+xlrd==2.0.1

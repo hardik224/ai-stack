@@ -65,7 +65,7 @@ function SharedUploadDialog() {
 
   const mutation = useMutation({
     mutationFn: () => {
-      if (!files.length) throw new Error('At least one PDF or CSV file is required.');
+      if (!files.length) throw new Error('At least one PDF, CSV, or Excel file is required.');
       return uploadFiles(token, files);
     },
     onSuccess: () => {
@@ -81,7 +81,7 @@ function SharedUploadDialog() {
 
   const addFiles = (incoming: FileList | File[] | null | undefined) => {
     if (!incoming) return;
-    const next = Array.from(incoming).filter((file) => /\.(pdf|csv)$/i.test(file.name));
+    const next = Array.from(incoming).filter((file) => /\.(pdf|csv|xlsx|xls)$/i.test(file.name));
     setFiles((current) => {
       const merged = [...current];
       for (const file of next) {
@@ -99,7 +99,7 @@ function SharedUploadDialog() {
       {open ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-md">
           <Card className="w-full max-w-2xl p-6">
-            <SectionHeading eyebrow="New upload" title="Add source files" description="Upload one or more PDFs or CSVs and the system will place them into the right managed knowledge space automatically." />
+            <SectionHeading eyebrow="New upload" title="Add source files" description="Upload one or more PDFs, CSVs, or Excel files and the system will place them into the right managed knowledge space automatically." />
             <div className="mt-6 grid gap-4">
               <div className="rounded-2xl border border-cyan-300/10 bg-cyan-400/5 px-4 py-4 text-sm leading-6 text-slate-300">
                 Drag and drop files here or browse from your device. The platform routes them automatically and starts ingestion in the background.
@@ -122,10 +122,10 @@ function SharedUploadDialog() {
               >
                 <UploadCloud className="size-6" />
                 <div>
-                  <p className="text-sm font-medium text-white">Drag and drop PDF or CSV files</p>
+                  <p className="text-sm font-medium text-white">Drag and drop PDF, CSV, or Excel files</p>
                   <p className="mt-1 text-xs text-slate-400">You can select and upload multiple files at the same time.</p>
                 </div>
-                <input type="file" accept=".pdf,.csv" multiple onChange={(event) => addFiles(event.target.files)} className="hidden" />
+                <input type="file" accept=".pdf,.csv,.xlsx,.xls" multiple onChange={(event) => addFiles(event.target.files)} className="hidden" />
               </label>
               {files.length ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -713,7 +713,7 @@ function WorkspaceDashboardView() {
                 ))}
               </div>
             ) : (
-              <EmptyState title="No uploads yet" description="Upload your first PDF or CSV to start building the knowledge base behind the assistant." />
+              <EmptyState title="No uploads yet" description="Upload your first PDF, CSV, or Excel to start building the knowledge base behind the assistant." />
             )}
           </Card>
 
