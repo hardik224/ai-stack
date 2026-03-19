@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, FileText, LogOut, MessageSquare, Plus, SendHorizontal, Sparkles, UploadCloud } from 'lucide-react';
+import { ArrowLeft, Bot, FileText, LogOut, MessageSquare, Plus, SendHorizontal, Sparkles, UploadCloud } from 'lucide-react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 
@@ -415,14 +415,26 @@ function AssistantView() {
     <div className="grid h-screen w-full grid-cols-[260px_minmax(0,1fr)] bg-[#212121] text-slate-100">
       <aside className="flex min-h-0 flex-col border-r border-white/10 bg-[#171717]">
         <div className="px-4 pb-4 pt-3">
-          <div className="mb-4 flex items-center gap-3 px-2">
-            <div className="inline-flex size-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white">
-              <Bot className="size-4" />
+          <div className="mb-4 flex items-center justify-between gap-3 px-2">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex size-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white">
+                <Bot className="size-4" />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.28em] text-slate-500">AI Stack</p>
+                <h1 className="text-lg font-semibold text-white">Assistant</h1>
+              </div>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">AI Stack</p>
-              <h1 className="text-lg font-semibold text-white">Assistant</h1>
-            </div>
+            {user?.role !== 'user' ? (
+              <Link
+                href="/dashboard"
+                className="inline-flex size-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+                aria-label="Back to dashboard"
+                title="Back to dashboard"
+              >
+                <ArrowLeft className="size-4" />
+              </Link>
+            ) : null}
           </div>
           <button onClick={startNewChat} className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10">
             <Plus className="size-4" />
@@ -468,28 +480,21 @@ function AssistantView() {
           )}
         </div>
 
-        <div className="border-t border-white/10 px-3 py-2.5">
-          <div className="flex items-center gap-2 rounded-2xl border border-white/8 bg-white/[0.04] px-3 py-2.5">
-            <div className="flex min-w-0 flex-1 items-center gap-2.5">
-              <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-[#2a2a2a] text-xs font-semibold text-white">
-                {(user?.full_name || user?.email || 'U').trim().slice(0, 1).toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-white">{user?.full_name || 'Workspace user'}</p>
-                <p className="truncate text-[11px] text-slate-500">{user?.email}</p>
-              </div>
+        <div className="shrink-0 border-t border-white/10 bg-[#171717] px-3 py-2">
+          <div className="flex items-center gap-2 rounded-xl px-1 py-1">
+            <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-xs font-semibold text-white">
+              {(user?.full_name || user?.email || 'U').trim().slice(0, 1).toUpperCase()}
             </div>
-            {user?.role !== 'user' ? (
-              <Link href="/dashboard" className="inline-flex h-8 items-center rounded-full border border-white/10 px-3 text-[11px] text-slate-300 transition hover:bg-white/5 hover:text-white">
-                Dashboard
-              </Link>
-            ) : null}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-white">{user?.full_name || 'Workspace user'}</p>
+              <p className="truncate text-[11px] text-slate-500">{user?.email}</p>
+            </div>
             <button
               onClick={() => {
                 logout();
                 window.location.href = '/login';
               }}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:bg-white/5 hover:text-white"
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-slate-300 transition hover:bg-white/10 hover:text-white"
               aria-label="Logout"
               title="Logout"
             >
@@ -748,3 +753,5 @@ export function WorkspaceSectionIndexView({ section }: { section: string }) {
 export function WorkspaceSectionDetailView() {
   return <EmptyState title="No detail screen here" description="This workspace route does not currently expose a dedicated detail view." />;
 }
+
+
