@@ -1560,6 +1560,8 @@ export function SectionIndexView({ section }: { section: string }) {
       return <CollectionsView />;
     case 'models':
       return <ModelsView />;
+    case 'console':
+      return <ConsoleView />;
     default:
       return <EmptyState title="Unknown admin section" description="This route does not map to a configured admin view yet." />;
   }

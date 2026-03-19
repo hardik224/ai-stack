@@ -21,6 +21,33 @@ from app.services.prompt_service import build_chat_prompt, build_insufficient_ev
 
 
 
+SMALLTALK_RESPONSES = {
+    'hello': 'Hello! How can I help you today?',
+    'hi': 'Hi! How can I help you today?',
+    'hey': 'Hey! How can I help you today?',
+    'thanks': "You're welcome.",
+    'thank you': "You're welcome.",
+    'bye': 'Bye! Take care.',
+}
+
+
+def _normalize_smalltalk(text: str) -> str:
+    return ' '.join((text or '').strip().lower().split())
+
+
+
+def _get_smalltalk_response(text: str) -> str | None:
+    normalized = _normalize_smalltalk(text)
+    if normalized in SMALLTALK_RESPONSES:
+        return SMALLTALK_RESPONSES[normalized]
+    if normalized in {'how are you', 'how are you?', 'how r u'}:
+        return "I'm doing well. How can I help you today?"
+    if normalized in {'help', 'what can you do', 'what can you do?'}:
+        return 'I can answer questions, explain things clearly, and help with analysis when needed.'
+    return None
+
+
+
 def stream_chat(*, payload, current_identity: dict) -> StreamingResponse:
     headers = {
         'Cache-Control': 'no-cache',
@@ -174,6 +201,136 @@ def _chat_event_stream(*, payload, current_identity: dict):
             error_message=None,
         )
         assistant_message_id = UUID(str(assistant_message['id']))
+
+        smalltalk_response = _get_smalltalk_response(payload.message)
+        if smalltalk_response:
+            total_ms = round((time.perf_counter() - total_start) * 1000, 2)
+            metadata = {
+                'mode': mode,
+                'answer': {
+                    'format': 'markdown',
+                    'streamed': True,
+                    'mode': 'smalltalk',
+                    'provider': 'deterministic',
+                    'model': None,
+                },
+                'retrieval': {
+                    'query': payload.message,
+                    'normalized_query': payload.message.strip().lower(),
+                    'expanded_query': payload.message.strip().lower(),
+                    'filters': {
+                        'collection_id': str(effective_collection_id) if effective_collection_id else None,
+                        'file_id': str(payload.file_id) if payload.file_id else None,
+                        'source_type': payload.source_type,
+                    },
+                    'candidate_count': 0,
+                    'selected_count': 0,
+                    'dedupe_removed_count': 0,
+                    'cache_hit': False,
+                    'cache_version_scope': {},
+                    'retrieval_signature': None,
+                },
+                'timings': {'total_ms': total_ms},
+                'citations': [],
+                'cache': {
+                    'retrieval': {'hit': False, 'lookup_ms': 0.0, 'ttl_seconds': None},
+                    'prompt': {'hit': False, 'lookup_ms': 0.0, 'ttl_seconds': None},
+                    'answer': {'hit': False, 'lookup_ms': 0.0, 'ttl_seconds': None, 'eligible': False},
+                },
+            }
+
+            yield format_sse_event(
+                'retrieval.completed',
+                {
+                    'mode': mode,
+                    'query': payload.message,
+                    'normalized_query': payload.message.strip().lower(),
+                    'expanded_query': payload.message.strip().lower(),
+                    'count': 0,
+                    'candidate_count': 0,
+                    'dedupe_removed_count': 0,
+                    'filters': metadata['retrieval']['filters'],
+                    'timings': {'total_ms': 0.0},
+                    'citations': [],
+                    'evidence_assessment': {'is_sufficient': True, 'reason': 'smalltalk', 'selected_count': 0},
+                    'cache': metadata['cache']['retrieval'],
+                },
+                session_id=str(session_id),
+                message_id=str(assistant_message_id),
+            )
+            yield format_sse_event(
+                'generation.started',
+                {
+                    'mode': mode,
+                    'generation_mode': 'smalltalk',
+                    'backend': 'deterministic',
+                    'model': None,
+                    'cache': metadata['cache']['answer'],
+                },
+                session_id=str(session_id),
+                message_id=str(assistant_message_id),
+            )
+            for delta in _chunk_text(smalltalk_response):
+                yield format_sse_event(
+                    'content.delta',
+                    {'delta': delta},
+                    session_id=str(session_id),
+                    message_id=str(assistant_message_id),
+                )
+
+            chat_model.update_chat_message(
+                message_id=assistant_message_id,
+                content=smalltalk_response,
+                token_count=_estimate_token_count(smalltalk_response),
+                metadata=metadata,
+                status='completed',
+                error_message=None,
+            )
+            chat_model.touch_session(
+                session_id=session_id,
+                collection_id=effective_collection_id,
+                metadata={
+                    'last_assistant_message_id': str(assistant_message_id),
+                    'last_total_ms': total_ms,
+                    'last_mode': mode,
+                },
+            )
+            record_activity(
+                actor_user_id=UUID(str(current_identity['id'])),
+                activity_type='chat.message.assistant.completed',
+                target_type='chat_message',
+                target_id=assistant_message_id,
+                description='Assistant completed a conversational reply.',
+                visibility='foreground',
+                metadata={'session_id': str(session_id), 'generation_mode': 'smalltalk', 'mode': mode, 'total_ms': total_ms},
+            )
+            yield format_sse_event(
+                'citations.completed',
+                {'citations': []},
+                session_id=str(session_id),
+                message_id=str(assistant_message_id),
+            )
+            yield format_sse_event(
+                'message.saved',
+                {'message_id': str(assistant_message_id), 'status': 'completed'},
+                session_id=str(session_id),
+                message_id=str(assistant_message_id),
+            )
+            yield format_sse_event(
+                'generation.completed',
+                {
+                    'message_id': str(assistant_message_id),
+                    'mode': mode,
+                    'status': 'completed',
+                    'citation_count': 0,
+                    'timings': {'total_ms': total_ms},
+                    'generation_mode': 'smalltalk',
+                    'cache': metadata['cache'],
+                },
+                session_id=str(session_id),
+                message_id=str(assistant_message_id),
+            )
+            return
 
         effective_top_k = payload.top_k or (min(settings.search_max_limit, settings.chat_default_top_k + 2) if mode == 'analysis' else None)
         effective_context_chunks = payload.max_context_chunks or (settings.chat_default_max_context_chunks + 2 if mode == 'analysis' else None)
