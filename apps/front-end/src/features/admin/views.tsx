@@ -333,10 +333,6 @@ function DashboardView() {
     ...item,
     ...getUserChartNames(item.full_name, item.email),
   }));
-  const uploadLeaderboardData = (summary.data?.items ?? []).slice(0, 8).map((item) => ({
-    ...item,
-    ...getUserChartNames(item.full_name, item.email),
-  }));
   const jobDistribution = [
     { name: 'Queued', value: jobSummary.data?.queued_jobs ?? 0, href: '/jobs' },
     { name: 'Processing', value: jobSummary.data?.processing_jobs ?? 0, href: '/jobs' },
@@ -580,6 +576,10 @@ function UploadsView() {
   const offset = (page - 1) * PAGE_SIZE;
   const uploads = useQuery({ queryKey: ['uploads', page], queryFn: () => fetchUploads(token, { limit: PAGE_SIZE, offset }) });
   const summary = useQuery({ queryKey: ['uploads-summary'], queryFn: () => fetchUploadSummary(token) });
+  const uploadLeaderboardData = (summary.data?.items ?? []).slice(0, 8).map((item) => ({
+    ...item,
+    ...getUserChartNames(item.full_name, item.email),
+  }));
   const filtered = useMemo(
     () =>
       (uploads.data?.items ?? []).filter((item) => {
