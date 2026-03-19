@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, FileText, MessageSquare, Plus, SendHorizontal, Sparkles, UploadCloud } from 'lucide-react';
+import { Bot, FileText, LogOut, MessageSquare, Plus, SendHorizontal, Sparkles, UploadCloud } from 'lucide-react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 
@@ -129,27 +129,37 @@ function MessageBubble({ message }: { message: LocalChatMessage }) {
   const isUser = message.role === 'user';
 
   return (
-    <div className={cn('flex w-full', isUser ? 'justify-end' : 'justify-start')}>
-      <div className={cn('max-w-[92%] rounded-[28px] border px-5 py-4 shadow-[0_20px_60px_-35px_rgba(15,23,42,0.95)] backdrop-blur-xl md:max-w-[82%]', isUser ? 'border-cyan-300/20 bg-gradient-to-br from-cyan-400/14 to-sky-400/8 text-white' : 'border-white/10 bg-white/6 text-slate-100')}>
-        <div className="mb-3 flex items-center justify-between gap-4">
-          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-slate-400">
-            <span className={cn('inline-flex size-8 items-center justify-center rounded-2xl border', isUser ? 'border-cyan-300/20 bg-cyan-400/12 text-cyan-100' : 'border-white/10 bg-white/5 text-slate-200')}>
-              {isUser ? <span className="text-sm font-semibold">You</span> : <Bot className="size-4" />}
+    <div className={cn('mx-auto flex w-full max-w-[880px]', isUser ? 'justify-end' : 'justify-start')}>
+      <div
+        className={cn(
+          isUser
+            ? 'max-w-[78%] rounded-[28px] bg-[#303030] px-5 py-4 text-white shadow-[0_24px_60px_-36px_rgba(0,0,0,0.85)]'
+            : 'w-full px-1 py-1 text-slate-100',
+        )}
+      >
+        {!isUser ? (
+          <div className="mb-4 flex items-center gap-3 text-xs uppercase tracking-[0.26em] text-slate-500">
+            <span className="inline-flex size-8 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-200">
+              <Bot className="size-4" />
             </span>
-            {isUser ? 'You' : 'Assistant'}
-          </div>
-          <div className="flex items-center gap-2">
+            Assistant
             {message.status ? <StatusBadge value={message.status} /> : null}
           </div>
-        </div>
-        {isUser ? <p className="whitespace-pre-wrap text-[15px] leading-8 text-white">{message.content}</p> : <MarkdownAnswer content={message.content || '...'} />}
+        ) : null}
+
+        {isUser ? (
+          <p className="whitespace-pre-wrap text-[15px] leading-8 text-white">{message.content}</p>
+        ) : (
+          <MarkdownAnswer content={message.content || '...'} />
+        )}
+
         {!isUser && message.sources?.length ? (
-          <div className="mt-5 border-t border-white/8 pt-4">
-            <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Sources</p>
+          <div className="mt-6 border-t border-white/8 pt-4">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Sources</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {message.sources.map((source) => (
-                <div key={`${message.id}-${source.citation_label}-${source.chunk_id}`} className="rounded-2xl border border-cyan-300/10 bg-cyan-400/6 px-3 py-2 text-xs text-cyan-50">
-                  <span className="font-semibold text-cyan-100">[{source.citation_label}]</span> {source.file_name || 'Source'}
+                <div key={`${message.id}-${source.citation_label}-${source.chunk_id}`} className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200">
+                  <span className="font-semibold text-white">[{source.citation_label}]</span> {source.file_name || 'Source'}
                   {source.page_number ? ` | p.${source.page_number}` : ''}
                   {source.row_number ? ` | row ${source.row_number}` : ''}
                 </div>
@@ -157,6 +167,7 @@ function MessageBubble({ message }: { message: LocalChatMessage }) {
             </div>
           </div>
         ) : null}
+
         {message.error_message ? <p className="mt-4 text-sm text-rose-300">{message.error_message}</p> : null}
       </div>
     </div>
@@ -165,7 +176,7 @@ function MessageBubble({ message }: { message: LocalChatMessage }) {
 
 function AssistantView() {
   const token = useToken();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const queryClient = useQueryClient();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const streamQueueRef = useRef<string[]>([]);
@@ -207,13 +218,16 @@ function AssistantView() {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, streamStatus]);
 
-  useEffect(() => () => {
-    if (streamIntervalRef.current) {
-      clearInterval(streamIntervalRef.current);
-      streamIntervalRef.current = null;
-    }
-    streamQueueRef.current = [];
-  }, []);
+  useEffect(
+    () => () => {
+      if (streamIntervalRef.current) {
+        clearInterval(streamIntervalRef.current);
+        streamIntervalRef.current = null;
+      }
+      streamQueueRef.current = [];
+    },
+    [],
+  );
 
   const currentSession = selectedSessionId ? (sessionsQuery.data?.items.find((item) => item.id === selectedSessionId) ?? detailQuery.data?.session ?? null) : null;
   const filteredSessions = useMemo(
@@ -234,7 +248,7 @@ function AssistantView() {
       if (!streamQueueRef.current.length) return;
       const flushed = streamQueueRef.current.join('');
       streamQueueRef.current = [];
-      setMessages((current) => current.map((message) => message.id === assistantMessageIdRef.current ? { ...message, content: `${message.content}${flushed}` } : message));
+      setMessages((current) => current.map((message) => (message.id === assistantMessageIdRef.current ? { ...message, content: `${message.content}${flushed}` } : message)));
       return;
     }
 
@@ -248,7 +262,7 @@ function AssistantView() {
         stopStreamAnimation();
         return;
       }
-      setMessages((current) => current.map((message) => message.id === assistantMessageIdRef.current ? { ...message, content: `${message.content}${nextDelta}` } : message));
+      setMessages((current) => current.map((message) => (message.id === assistantMessageIdRef.current ? { ...message, content: `${message.content}${nextDelta}` } : message)));
       if (!streamQueueRef.current.length) {
         stopStreamAnimation();
       }
@@ -258,9 +272,11 @@ function AssistantView() {
   function startNewChat() {
     stopStreamAnimation();
     streamQueueRef.current = [];
+    assistantMessageIdRef.current = null;
     setIsNewChatDraft(true);
     setSelectedSessionId(null);
     setMessages([]);
+    setDraft('');
     setStreamError(null);
     setStreamStatus('');
   }
@@ -323,25 +339,25 @@ function AssistantView() {
               }
               case 'citations.completed': {
                 const citations = Array.isArray(event.data?.citations) ? (event.data?.citations as ChatSource[]) : [];
-                setMessages((current) => current.map((message) => message.id === assistantMessageIdRef.current ? { ...message, sources: citations } : message));
+                setMessages((current) => current.map((message) => (message.id === assistantMessageIdRef.current ? { ...message, sources: citations } : message)));
                 break;
               }
               case 'message.saved':
                 assistantMessageIdRef.current = event.message_id || assistantMessageIdRef.current;
-                setMessages((current) => current.map((message) => message.id === assistantMessageId || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false } : message));
+                setMessages((current) => current.map((message) => (message.id === assistantMessageId || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false } : message)));
                 break;
               case 'generation.completed':
                 flushStreamQueue(true);
                 setStreamStatus('Answer ready');
                 assistantMessageIdRef.current = event.message_id || assistantMessageIdRef.current;
-                setMessages((current) => current.map((message) => message.id === assistantMessageId || message.id === event.message_id || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false } : message));
+                setMessages((current) => current.map((message) => (message.id === assistantMessageId || message.id === event.message_id || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false } : message)));
                 break;
               case 'error': {
                 const detail = typeof event.data?.detail === 'string' ? event.data.detail : 'The chat request failed.';
                 setStreamError(detail);
                 setStreamStatus('Generation failed');
                 flushStreamQueue(true);
-                setMessages((current) => current.map((message) => message.id === assistantMessageIdRef.current || message.id === assistantMessageId ? { ...message, status: 'failed', error_message: detail, isTransient: false } : message));
+                setMessages((current) => current.map((message) => (message.id === assistantMessageIdRef.current || message.id === assistantMessageId ? { ...message, status: 'failed', error_message: detail, isTransient: false } : message)));
                 break;
               }
               default:
@@ -354,7 +370,7 @@ function AssistantView() {
       const message = error instanceof Error ? error.message : 'The chat request failed.';
       setStreamError(message);
       flushStreamQueue(true);
-      setMessages((current) => current.map((item) => item.id === assistantMessageIdRef.current || item.id === assistantMessageId ? { ...item, status: 'failed', error_message: message, isTransient: false } : item));
+      setMessages((current) => current.map((item) => (item.id === assistantMessageIdRef.current || item.id === assistantMessageId ? { ...item, status: 'failed', error_message: message, isTransient: false } : item)));
     } finally {
       setStreaming(false);
       if (!streamQueueRef.current.length) {
@@ -374,15 +390,28 @@ function AssistantView() {
   }
 
   return (
-    <div className="grid h-[calc(100vh-2rem)] min-h-[720px] gap-0 overflow-hidden rounded-[32px] border border-white/10 bg-[#111214]/90 shadow-[0_50px_160px_-70px_rgba(15,23,42,0.98)] xl:grid-cols-[320px_minmax(0,1fr)]">
-      <aside className="flex min-h-0 flex-col border-r border-white/8 bg-[#17181a]/92">
-        <div className="border-b border-white/8 px-4 py-4">
-          <button onClick={startNewChat} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10"><Plus className="size-4" />New chat</button>
+    <div className="grid h-screen w-full grid-cols-[260px_minmax(0,1fr)] bg-[#212121] text-slate-100">
+      <aside className="flex min-h-0 flex-col border-r border-white/10 bg-[#171717]">
+        <div className="px-4 pb-4 pt-3">
+          <div className="mb-4 flex items-center gap-3 px-2">
+            <div className="inline-flex size-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white">
+              <Bot className="size-4" />
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-slate-500">AI Stack</p>
+              <h1 className="text-lg font-semibold text-white">Assistant</h1>
+            </div>
+          </div>
+          <button onClick={startNewChat} className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10">
+            <Plus className="size-4" />
+            New chat
+          </button>
           <div className="mt-3">
             <SearchInput value={sessionSearch} onChange={setSessionSearch} placeholder="Search chats" />
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
           {sessionsQuery.isLoading ? (
             <div className="space-y-3">
               <SkeletonCard />
@@ -391,11 +420,21 @@ function AssistantView() {
           ) : sessionsQuery.error ? (
             <ErrorState title="Could not load chats" description={sessionsQuery.error instanceof Error ? sessionsQuery.error.message : 'Unknown error'} onRetry={() => sessionsQuery.refetch()} />
           ) : filteredSessions.length ? (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {filteredSessions.map((session) => {
-                const active = session.id === selectedSessionId;
+                const active = session.id === selectedSessionId && !isNewChatDraft;
                 return (
-                  <button key={session.id} onClick={() => { setIsNewChatDraft(false); setSelectedSessionId(session.id); }} className={cn('w-full rounded-2xl px-4 py-3 text-left transition', active ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/6 hover:text-white')}>
+                  <button
+                    key={session.id}
+                    onClick={() => {
+                      setIsNewChatDraft(false);
+                      setSelectedSessionId(session.id);
+                    }}
+                    className={cn(
+                      'w-full rounded-2xl px-3 py-3 text-left transition',
+                      active ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/6 hover:text-white',
+                    )}
+                  >
                     <p className="truncate text-sm font-medium">{session.title || 'Untitled chat'}</p>
                     <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{session.last_message_content || 'Ready for the next grounded answer.'}</p>
                   </button>
@@ -406,32 +445,55 @@ function AssistantView() {
             <EmptyState title="No chats found" description="Start a new conversation or try another search term." />
           )}
         </div>
+
+        <div className="border-t border-white/10 px-4 py-4">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+            <p className="text-sm font-medium text-white">{user?.full_name || user?.email}</p>
+            <p className="mt-1 text-xs text-slate-500">{user?.email}</p>
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <StatusBadge value={user?.role || 'user'} />
+              {user?.role !== 'user' ? <Link href="/dashboard" className="text-xs text-slate-400 transition hover:text-white">Dashboard</Link> : null}
+              <button
+                onClick={() => {
+                  logout();
+                  window.location.href = '/login';
+                }}
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/5"
+              >
+                <LogOut className="size-3.5" />
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
       </aside>
 
       <section className="flex min-h-0 flex-col bg-[#212121]">
-        <div className="border-b border-white/8 px-6 py-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="shrink-0 border-b border-white/10 px-6 py-3">
+          <div className="mx-auto flex w-full max-w-[880px] items-center justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-500">AI Stack Assistant</p>
-              <h2 className="mt-2 text-xl font-semibold text-white">{currentSession?.title || 'New chat'}</h2>
+              <p className="text-sm font-medium text-white">{currentSession?.title || 'New chat'}</p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
               {user?.role !== 'user' ? (
-                <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
+                <div className="inline-flex rounded-full bg-white/5 p-1">
                   {(['knowledge_qa', 'analysis'] as ChatMode[]).map((option) => (
-                    <button key={option} onClick={() => setMode(option)} className={cn('rounded-full px-4 py-2 text-sm transition', mode === option ? 'bg-white text-slate-950' : 'text-slate-400 hover:text-white')}>
-                      {option === 'knowledge_qa' ? 'Knowledge Q&A' : 'Analysis'}
+                    <button
+                      key={option}
+                      onClick={() => setMode(option)}
+                      className={cn('rounded-full px-3 py-1.5 text-xs transition', mode === option ? 'bg-white text-slate-950' : 'text-slate-400 hover:text-white')}
+                    >
+                      {option === 'knowledge_qa' ? 'Knowledge' : 'Analysis'}
                     </button>
                   ))}
                 </div>
               ) : null}
-              <StatusBadge value={streaming ? 'processing' : 'active'} />
             </div>
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8">
-          <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto flex w-full max-w-[880px] flex-col gap-8 px-6 py-8">
             {detailQuery.isLoading && selectedSessionId && !messages.length ? (
               <div className="space-y-4">
                 <SkeletonCard />
@@ -440,11 +502,13 @@ function AssistantView() {
             ) : null}
 
             {!messages.length && !selectedSessionId ? (
-              <div className="flex min-h-[46vh] items-center justify-center">
+              <div className="flex min-h-[48vh] items-center justify-center">
                 <div className="max-w-2xl space-y-5 text-center">
-                  <div className="mx-auto inline-flex rounded-3xl border border-white/10 bg-white/5 p-4 text-slate-200"><Bot className="size-7" /></div>
-                  <h3 className="text-4xl font-semibold tracking-tight text-white">What can I help you find?</h3>
-                  <p className="text-base leading-8 text-slate-400">Ask grounded questions in natural language. The assistant searches your uploaded knowledge base, streams the answer live, and shows citations for every supported claim.</p>
+                  <div className="mx-auto inline-flex size-14 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white">
+                    <Bot className="size-6" />
+                  </div>
+                  <h3 className="text-4xl font-semibold tracking-tight text-white">What can I help with?</h3>
+                  <p className="text-base leading-8 text-slate-400">Ask grounded questions in natural language. The assistant searches your uploaded knowledge base, streams the answer live, and cites every supported claim.</p>
                 </div>
               </div>
             ) : null}
@@ -454,13 +518,13 @@ function AssistantView() {
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-white/8 bg-[#212121] px-6 py-5">
-          <div className="mx-auto w-full max-w-4xl">
-            <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-slate-400">
-              {streamStatus ? <span>{streamStatus}</span> : <span>Live SSE streaming | Structured markdown | Citation-aware answers</span>}
+        <div className="shrink-0 border-t border-white/10 bg-[#212121] px-6 py-4">
+          <div className="mx-auto w-full max-w-[880px]">
+            <div className="mb-3 flex min-h-5 items-center gap-3 text-sm text-slate-500">
+              {streamStatus ? <span>{streamStatus}</span> : <span>{streamError ? '' : 'Answers stream live with grounded citations.'}</span>}
               {streamError ? <span className="text-rose-300">{streamError}</span> : null}
             </div>
-            <div className="rounded-[28px] border border-white/10 bg-[#2a2a2a] p-3 shadow-[0_20px_50px_-35px_rgba(0,0,0,0.9)]">
+            <div className="rounded-[30px] border border-white/10 bg-[#2f2f2f] px-4 py-3 shadow-[0_24px_70px_-38px_rgba(0,0,0,0.9)]">
               <textarea
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
@@ -471,16 +535,20 @@ function AssistantView() {
                   }
                 }}
                 placeholder={user?.role === 'user' ? 'Ask anything from your uploaded knowledge base...' : 'Ask a grounded question, summarize documents, or analyze uploaded reports...'}
-                className="min-h-28 w-full resize-none bg-transparent px-3 py-3 text-[15px] leading-7 text-white outline-none placeholder:text-slate-500"
+                className="min-h-24 w-full resize-none bg-transparent px-2 py-2 text-[15px] leading-7 text-white outline-none placeholder:text-slate-500"
               />
-              <div className="mt-3 flex items-center justify-between gap-3 px-2 pb-1">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.28em] text-slate-500">
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs text-slate-500">
                   <Sparkles className="size-4" />
-                  Fast stream experience
+                  {streaming ? 'Streaming response...' : 'Press Enter to send'}
                 </div>
-                <button onClick={() => void handleSend()} disabled={streaming || !draft.trim()} className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60">
+                <button
+                  onClick={() => void handleSend()}
+                  disabled={streaming || !draft.trim()}
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
                   <SendHorizontal className="size-4" />
-                  {streaming ? 'Streaming...' : 'Send'}
+                  Send
                 </button>
               </div>
             </div>

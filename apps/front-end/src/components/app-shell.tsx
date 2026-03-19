@@ -89,6 +89,14 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (isAssistantRoute) {
+    return (
+      <div className="h-screen overflow-hidden bg-[#212121] text-slate-100">
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.16),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(168,85,247,0.12),_transparent_22%),linear-gradient(180deg,_#030611,_#02040c)] text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-[1680px] gap-6 px-4 py-4 lg:px-6">
