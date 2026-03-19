@@ -320,7 +320,7 @@ function AssistantView() {
     setMessages((current) => [
       ...current,
       { id: userMessageId, session_id: selectedSessionId ?? 'pending', role: 'user', content, status: 'completed', created_at: new Date().toISOString(), sources: [], metadata: { mode } },
-      { id: assistantMessageId, session_id: selectedSessionId ?? 'pending', role: 'assistant', content: '', status: 'streaming', created_at: new Date().toISOString(), sources: [], metadata: { mode }, isTransient: true },
+      { id: assistantMessageId, session_id: selectedSessionId ?? 'pending', role: 'assistant', content: '', status: 'streaming', created_at: new Date().toISOString(), sources: [], citation_count: 0, metadata: { mode }, isTransient: true },
     ]);
 
     try {
@@ -361,18 +361,18 @@ function AssistantView() {
               }
               case 'citations.completed': {
                 const citations = Array.isArray(event.data?.citations) ? (event.data?.citations as ChatSource[]) : [];
-                setMessages((current) => current.map((message) => (message.id === assistantMessageIdRef.current ? { ...message, sources: citations } : message)));
+                setMessages((current) => current.map((message) => (message.id === assistantMessageIdRef.current ? { ...message, sources: citations, citation_count: citations.length } : message)));
                 break;
               }
               case 'message.saved':
                 assistantMessageIdRef.current = event.message_id || assistantMessageIdRef.current;
-                setMessages((current) => current.map((message) => (message.id === assistantMessageId || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false } : message)));
+                setMessages((current) => current.map((message) => (message.id === assistantMessageId || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false, sources: message.sources ?? [], citation_count: message.citation_count ?? 0 } : message)));
                 break;
               case 'generation.completed':
                 flushStreamQueue(true);
                 setStreamStatus('Answer ready');
                 assistantMessageIdRef.current = event.message_id || assistantMessageIdRef.current;
-                setMessages((current) => current.map((message) => (message.id === assistantMessageId || message.id === event.message_id || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false } : message)));
+                setMessages((current) => current.map((message) => (message.id === assistantMessageId || message.id === event.message_id || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false, sources: message.sources ?? [], citation_count: message.citation_count ?? 0 } : message)));
                 break;
               case 'error': {
                 const detail = typeof event.data?.detail === 'string' ? event.data.detail : 'The chat request failed.';
