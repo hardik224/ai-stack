@@ -225,11 +225,10 @@ export async function deleteLlmConfig(token: string, configId: string) {
   return requestJson<DeleteResponse>(`/admin/llm/configs/${configId}`, { method: 'DELETE' }, token);
 }
 
-export async function uploadFile(token: string, payload: { collectionId: string; file: File }) {
+export async function uploadFile(token: string, payload: { file: File }) {
   const formData = new FormData();
-  formData.set('collection_id', payload.collectionId);
   formData.set('file', payload.file);
-  return requestForm<{ file: UploadItem; job: { id: string; status: string }; message: string }>('/upload', formData, token);
+  return requestForm<{ file: UploadItem; job: { id: string; status: string }; message: string; collection?: { id: string; name: string; auto_assigned: boolean; created_now: boolean } }>('/upload', formData, token);
 }
 
 export async function deleteUsers(token: string, ids: string[]) {

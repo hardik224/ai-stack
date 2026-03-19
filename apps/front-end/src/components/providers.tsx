@@ -5,6 +5,8 @@ import { useState } from 'react';
 
 import { AuthProvider } from '@/components/auth-provider';
 
+const LIVE_REFRESH_INTERVAL_MS = 15_000;
+
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -12,7 +14,10 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: {
             staleTime: 20_000,
-            refetchOnWindowFocus: false,
+            refetchOnWindowFocus: true,
+            refetchOnReconnect: true,
+            refetchInterval: LIVE_REFRESH_INTERVAL_MS,
+            refetchIntervalInBackground: false,
             retry: 1,
           },
         },

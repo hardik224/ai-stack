@@ -11,7 +11,7 @@ router = APIRouter(tags=["files"])
 
 @router.post("/upload")
 def upload_file(
-    collection_id: UUID = Form(...),
+    collection_id: UUID | None = Form(default=None),
     file: UploadFile = File(...),
     current_user: dict = Depends(require_roles("admin", "internal_user")),
 ):

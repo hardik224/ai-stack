@@ -65,6 +65,26 @@ WHERE c.is_active = TRUE
 ORDER BY c.created_at DESC;
 """
 
+UPSERT_COLLECTION_BY_SLUG = """
+INSERT INTO collections (
+    name,
+    slug,
+    description,
+    visibility,
+    metadata,
+    created_by
+)
+VALUES (%s, %s, %s, %s, %s, %s)
+ON CONFLICT (slug) DO UPDATE
+SET
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    visibility = EXCLUDED.visibility,
+    metadata = collections.metadata || EXCLUDED.metadata,
+    is_active = TRUE
+RETURNING id, name, slug, description, visibility, metadata, created_by, created_at, updated_at;
+"""
+
 
 def create_collection(
     *,
@@ -91,3 +111,21 @@ def get_collection_by_slug(slug: str) -> dict | None:
 
 def list_collections() -> list[dict]:
     return fetch_all(LIST_COLLECTIONS)
+
+
+
+def upsert_collection_by_slug(
+    *,
+    name: str,
+    slug: str,
+    description: str | None,
+    visibility: str,
+    metadata: dict | None,
+    created_by: UUID,
+    conn=None,
+) -> dict | None:
+    return execute_returning(
+        UPSERT_COLLECTION_BY_SLUG,
+        (name, slug, description, visibility, to_jsonb(metadata), str(created_by)),
+        conn=conn,
+    )

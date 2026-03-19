@@ -7,7 +7,7 @@ from fastapi import HTTPException, UploadFile, status
 from app.config.settings import get_settings
 from app.library.db import transaction
 from app.library.queue import enqueue_json
-from app.library.security import require_condition, sanitize_filename, utcnow, validate_limit_offset
+from app.library.security import require_condition, sanitize_filename, slugify, utcnow, validate_limit_offset
 from app.library.storage import upload_bytes
 from app.models import collection_model, file_model, job_model
 from app.services.activity_service import record_activity
@@ -16,12 +16,36 @@ from app.services.activity_service import record_activity
 ALLOWED_UPLOAD_EXTENSIONS = {'.pdf': 'application/pdf', '.csv': 'text/csv'}
 
 
+def resolve_upload_collection(*, collection_id: UUID | None, current_user: dict, conn=None) -> tuple[dict, bool]:
+    if collection_id:
+        collection = collection_model.get_collection(collection_id)
+        if not collection:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Collection not found.')
+        return collection, False
 
-def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, current_user: dict) -> dict:
+    owner_label = (current_user.get('full_name') or current_user.get('email') or 'User').strip()
+    managed_slug = slugify(f"managed-uploads-{current_user['id']}")
+    existing = collection_model.get_collection_by_slug(managed_slug)
+    collection = collection_model.upsert_collection_by_slug(
+        name=f'{owner_label} Uploads',
+        slug=managed_slug,
+        description='System-managed upload space automatically assigned during file upload.',
+        visibility='internal',
+        metadata={
+            'managed_by_system': True,
+            'purpose': 'default_upload_target',
+            'owner_user_id': str(current_user['id']),
+        },
+        created_by=current_user['id'],
+        conn=conn,
+    )
+    return collection, existing is None
+
+
+
+def upload_file_to_collection(*, collection_id: UUID | None, upload: UploadFile, current_user: dict) -> dict:
     settings = get_settings()
-    collection = collection_model.get_collection(collection_id)
-    if not collection:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Collection not found.')
+    collection, collection_created = resolve_upload_collection(collection_id=collection_id, current_user=current_user)
 
     original_name = sanitize_filename(upload.filename or 'upload')
     extension = Path(original_name).suffix.lower()
@@ -39,7 +63,7 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
     file_id = uuid4()
     job_id = uuid4()
     source_type = extension.replace('.', '')
-    object_key = f"collections/{collection_id}/{utcnow().strftime('%Y/%m/%d')}/{file_id}{extension}"
+    object_key = f"collections/{collection['id']}/{utcnow().strftime('%Y/%m/%d')}/{file_id}{extension}"
 
     upload_bytes(
         bucket_name=settings.minio_documents_bucket,
@@ -51,7 +75,7 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
     with transaction() as conn:
         file_record = file_model.create_file(
             file_id=file_id,
-            collection_id=collection_id,
+            collection_id=collection['id'],
             uploaded_by=current_user['id'],
             original_name=original_name,
             stored_name=f'{file_id}{extension}',
@@ -69,7 +93,7 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
         job_record = job_model.create_ingestion_job(
             job_id=job_id,
             file_id=file_id,
-            collection_id=collection_id,
+            collection_id=collection['id'],
             created_by=current_user['id'],
             queue_name=settings.ingestion_queue_name,
             status='queued',
@@ -112,10 +136,21 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
             job_id=job_id,
             event_type='job.created',
             message='Ingestion job created and queued.',
-            event_data={'file_id': str(file_id), 'collection_id': str(collection_id), 'source_type': source_type},
+            event_data={'file_id': str(file_id), 'collection_id': str(collection['id']), 'source_type': source_type},
             created_by_user_id=current_user['id'],
             conn=conn,
         )
+        if collection_created:
+            record_activity(
+                actor_user_id=current_user['id'],
+                activity_type='collection.auto_created',
+                target_type='collection',
+                target_id=collection['id'],
+                description=f"System created upload collection '{collection['name']}'.",
+                visibility='foreground',
+                metadata={'collection_id': str(collection['id']), 'managed_by_system': True},
+                conn=conn,
+            )
         record_activity(
             actor_user_id=current_user['id'],
             activity_type='file.uploaded',
@@ -123,7 +158,7 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
             target_id=file_id,
             description=f"Uploaded file '{original_name}'.",
             visibility='foreground',
-            metadata={'collection_id': str(collection_id), 'job_id': str(job_id), 'source_type': source_type},
+            metadata={'collection_id': str(collection['id']), 'job_id': str(job_id), 'source_type': source_type, 'collection_auto_assigned': collection_id is None},
             conn=conn,
         )
 
@@ -133,7 +168,7 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
             {
                 'job_id': str(job_id),
                 'file_id': str(file_id),
-                'collection_id': str(collection_id),
+                'collection_id': str(collection['id']),
                 'uploaded_by': str(current_user['id']),
                 'source_type': source_type,
             },
@@ -197,6 +232,12 @@ def upload_file_to_collection(*, collection_id: UUID, upload: UploadFile, curren
         'file': file_record,
         'job': job_record,
         'message': 'File uploaded and job queued successfully.',
+        'collection': {
+            'id': collection['id'],
+            'name': collection['name'],
+            'auto_assigned': collection_id is None,
+            'created_now': collection_created,
+        },
     }
 
 

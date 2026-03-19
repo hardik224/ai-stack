@@ -159,23 +159,20 @@ function UploadDialog() {
   const token = useToken();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [collectionId, setCollectionId] = useState('');
   const [file, setFile] = useState<File | null>(null);
-  const collectionsQuery = useQuery({ queryKey: ['collections-upload'], queryFn: () => fetchCollections(token), enabled: open });
-  const collections = useMemo(() => (Array.isArray(collectionsQuery.data) ? collectionsQuery.data : collectionsQuery.data?.items ?? []), [collectionsQuery.data]);
 
   const mutation = useMutation({
     mutationFn: () => {
-      if (!collectionId || !file) throw new Error('Collection and file are required.');
-      return uploadFile(token, { collectionId, file });
+      if (!file) throw new Error('A PDF or CSV file is required.');
+      return uploadFile(token, { file });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['uploads'] });
       queryClient.invalidateQueries({ queryKey: ['uploads-summary'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       queryClient.invalidateQueries({ queryKey: ['job-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
       setOpen(false);
-      setCollectionId('');
       setFile(null);
     },
   });
@@ -186,18 +183,17 @@ function UploadDialog() {
       {open ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-md">
           <Card className="w-full max-w-2xl p-6">
-            <SectionHeading eyebrow="New upload" title="Add a source file" description="Upload a PDF or CSV into an existing collection and let the current ingestion pipeline handle the rest." />
+            <SectionHeading eyebrow="New upload" title="Add a source file" description="Upload a PDF or CSV and the system will place it into the right managed knowledge space automatically. You do not need to choose a collection." />
             <div className="mt-6 grid gap-4">
-              <select value={collectionId} onChange={(event) => setCollectionId(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none">
-                <option value="">Select collection</option>
-                {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}
-              </select>
+              <div className="rounded-2xl border border-cyan-300/10 bg-cyan-400/5 px-4 py-4 text-sm leading-6 text-slate-300">
+                Files are routed into a system-managed upload collection automatically, so the ingestion pipeline can stay organized without asking the uploader to understand collections first.
+              </div>
               <input type="file" accept=".pdf,.csv" onChange={(event) => setFile(event.target.files?.[0] ?? null)} className="rounded-2xl border border-dashed border-white/10 bg-slate-950/70 px-4 py-6 text-sm text-slate-300 outline-none" />
             </div>
             {mutation.error ? <p className="mt-4 text-sm text-rose-300">{mutation.error.message}</p> : null}
             <div className="mt-6 flex items-center justify-end gap-3">
               <button onClick={() => setOpen(false)} className="rounded-full border border-white/10 px-5 py-3 text-sm text-slate-300 transition hover:bg-white/5">Cancel</button>
-              <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !collectionId || !file} className="rounded-full bg-gradient-to-r from-cyan-400 to-indigo-400 px-5 py-3 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-60">{mutation.isPending ? 'Uploading...' : 'Start upload'}</button>
+              <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !file} className="rounded-full bg-gradient-to-r from-cyan-400 to-indigo-400 px-5 py-3 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-60">{mutation.isPending ? 'Uploading...' : 'Start upload'}</button>
             </div>
           </Card>
         </div>
@@ -1271,20 +1267,50 @@ function ModelsView() {
           <Card className="w-full max-w-3xl p-6">
             <SectionHeading eyebrow="Runtime config" title={editingConfig ? 'Edit model config' : 'Create model config'} description="Switching the active config changes the LLM backend for new chat requests immediately. Use OpenAI Compatible for self-hosted endpoints like vLLM later." />
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Display name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
-              <select value={form.provider} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value as LlmProviderType }))} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none">
-                <option value="anthropic">Anthropic / Claude</option>
-                <option value="openai">OpenAI</option>
-                <option value="openai_compatible">OpenAI Compatible / Self-hosted</option>
-              </select>
-              <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none md:col-span-2" placeholder="Model name" value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))} />
-              <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none md:col-span-2" placeholder="Base URL (required for self-hosted / openai_compatible)" value={form.base_url ?? ''} onChange={(event) => setForm((current) => ({ ...current, base_url: event.target.value }))} />
-              <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none md:col-span-2" placeholder={editingConfig ? 'Leave blank to keep existing key' : 'API key'} value={form.api_key ?? ''} onChange={(event) => setForm((current) => ({ ...current, api_key: event.target.value }))} />
-              <input type="number" min={1} max={600} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Timeout seconds" value={form.timeout_seconds} onChange={(event) => setForm((current) => ({ ...current, timeout_seconds: Number(event.target.value || 0) }))} />
-              <input type="number" min={1} max={32768} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Max output tokens" value={form.max_output_tokens} onChange={(event) => setForm((current) => ({ ...current, max_output_tokens: Number(event.target.value || 0) }))} />
-              <input type="number" step="0.1" min={0} max={2} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Temperature" value={form.temperature} onChange={(event) => setForm((current) => ({ ...current, temperature: Number(event.target.value || 0) }))} />
-              <input type="number" step="0.05" min={0} max={1} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Top P" value={form.top_p} onChange={(event) => setForm((current) => ({ ...current, top_p: Number(event.target.value || 0) }))} />
-              <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none md:col-span-2" placeholder="Reasoning effort (optional)" value={form.reasoning_effort ?? ''} onChange={(event) => setForm((current) => ({ ...current, reasoning_effort: event.target.value }))} />
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span className="text-xs uppercase tracking-[0.24em] text-slate-500">Display name</span>
+                <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Claude Production" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span className="text-xs uppercase tracking-[0.24em] text-slate-500">Provider</span>
+                <select value={form.provider} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value as LlmProviderType }))} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none">
+                  <option value="anthropic">Anthropic / Claude</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="openai_compatible">OpenAI Compatible / Self-hosted</option>
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                <span className="text-xs uppercase tracking-[0.24em] text-slate-500">Model name</span>
+                <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="claude-sonnet-4-5" value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))} />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                <span className="text-xs uppercase tracking-[0.24em] text-slate-500">Base URL</span>
+                <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Leave blank for Anthropic/OpenAI defaults, or add your self-hosted endpoint" value={form.base_url ?? ''} onChange={(event) => setForm((current) => ({ ...current, base_url: event.target.value }))} />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                <span className="text-xs uppercase tracking-[0.24em] text-slate-500">API key</span>
+                <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder={editingConfig ? 'Leave blank to keep existing key' : 'Paste provider API key'} value={form.api_key ?? ''} onChange={(event) => setForm((current) => ({ ...current, api_key: event.target.value }))} />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span className="text-xs uppercase tracking-[0.24em] text-slate-500">Timeout seconds</span>
+                <input type="number" min={1} max={600} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="180" value={form.timeout_seconds} onChange={(event) => setForm((current) => ({ ...current, timeout_seconds: Number(event.target.value || 0) }))} />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span className="text-xs uppercase tracking-[0.24em] text-slate-500">Max output tokens</span>
+                <input type="number" min={1} max={32768} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="1400" value={form.max_output_tokens} onChange={(event) => setForm((current) => ({ ...current, max_output_tokens: Number(event.target.value || 0) }))} />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span className="text-xs uppercase tracking-[0.24em] text-slate-500">Temperature</span>
+                <input type="number" step="0.1" min={0} max={2} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="0.4" value={form.temperature} onChange={(event) => setForm((current) => ({ ...current, temperature: Number(event.target.value || 0) }))} />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span className="text-xs uppercase tracking-[0.24em] text-slate-500">Top P</span>
+                <input type="number" step="0.05" min={0} max={1} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="0.95" value={form.top_p} onChange={(event) => setForm((current) => ({ ...current, top_p: Number(event.target.value || 0) }))} />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                <span className="text-xs uppercase tracking-[0.24em] text-slate-500">Reasoning effort</span>
+                <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Optional, only if your provider supports it" value={form.reasoning_effort ?? ''} onChange={(event) => setForm((current) => ({ ...current, reasoning_effort: event.target.value }))} />
+              </label>
             </div>
             <div className="mt-5 flex flex-wrap items-center gap-4 text-sm text-slate-300">
               <label className="inline-flex items-center gap-2"><input type="checkbox" checked={form.is_enabled} onChange={(event) => setForm((current) => ({ ...current, is_enabled: event.target.checked }))} />Enabled</label>

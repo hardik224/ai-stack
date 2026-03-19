@@ -5,7 +5,7 @@ from fastapi import UploadFile
 from app.services import file_service
 
 
-def upload_file(collection_id: UUID, file: UploadFile, current_user: dict):
+def upload_file(collection_id: UUID | None, file: UploadFile, current_user: dict):
     return file_service.upload_file_to_collection(
         collection_id=collection_id,
         upload=file,
