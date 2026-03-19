@@ -10,6 +10,8 @@ from uuid import UUID
 
 from app.config.settings import get_settings
 from app.library.db import close_db_pool, fetch_all, init_db_pool
+from app.library.qdrant import close_qdrant_client, init_qdrant_client
+from app.library.redis_client import close_redis_client, init_redis_client
 from app.services import retrieval_service
 from app.services.llm_config_service import ensure_default_llm_config
 from app.services.llm_service import get_runtime_llm_config, stream_markdown_answer
@@ -180,6 +182,8 @@ def main() -> None:
     args = parse_args()
     settings = get_settings()
     init_db_pool(settings.database_url)
+    init_redis_client(settings.redis_url)
+    init_qdrant_client(settings)
     ensure_default_llm_config(settings=settings)
 
     try:
@@ -209,6 +213,8 @@ def main() -> None:
         )
         run_llm_probe(args.question, scoped)
     finally:
+        close_qdrant_client()
+        close_redis_client()
         close_db_pool()
 
 
