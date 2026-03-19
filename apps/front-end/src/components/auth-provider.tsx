@@ -9,7 +9,7 @@ interface AuthContextValue {
   ready: boolean;
   token: string | null;
   user: AuthUser | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => void;
   refresh: () => Promise<void>;
 }
@@ -25,6 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const identity = await fetchMe(incomingToken);
     setToken(incomingToken);
     setUser(identity);
+    return identity;
   }, []);
 
   useEffect(() => {
@@ -49,6 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(response.access_token);
     setUser(response.user);
     setReady(true);
+    return response.user;
   }, []);
 
   const logout = useCallback(() => {

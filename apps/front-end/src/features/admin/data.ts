@@ -17,9 +17,12 @@ import type {
   PaginatedResponse,
   ProcessItem,
   ProcessSummary,
+  StreamChatEvent,
+  StreamChatRequest,
   UploadItem,
   UploadSummaryItem,
   AdminUserItem,
+  WorkspaceSummary,
 } from '@/features/admin/types';
 
 const API_PREFIX = process.env.NEXT_PUBLIC_API_PROXY_PREFIX || '/proxy';
@@ -46,6 +49,20 @@ function buildUrl(path: string, query?: Record<string, string | number | boolean
   return `${url.pathname}${url.search}`;
 }
 
+function resolveRequestPath(path: string) {
+  return path.startsWith('http') || path.startsWith(API_PREFIX) ? path : `${API_PREFIX}${path}`;
+}
+
+function parseTextPayload(text: string) {
+  let payload: unknown = text;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = text;
+  }
+  return payload;
+}
+
 async function requestJson<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
@@ -56,21 +73,14 @@ async function requestJson<T>(path: string, init: RequestInit = {}, token?: stri
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const requestPath = path.startsWith('http') || path.startsWith(API_PREFIX) ? path : `${API_PREFIX}${path}`;
-
-  const response = await fetch(requestPath, {
+  const response = await fetch(resolveRequestPath(path), {
     ...init,
     headers,
     cache: 'no-store',
   });
 
   const text = await response.text();
-  let payload: unknown = text;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    payload = text;
-  }
+  const payload = parseTextPayload(text);
 
   if (!response.ok) {
     const message = typeof payload === 'object' && payload && 'detail' in payload ? String((payload as { detail: string }).detail) : `Request failed with status ${response.status}`;
@@ -87,8 +97,7 @@ async function requestForm<T>(path: string, formData: FormData, token?: string):
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const requestPath = path.startsWith('http') || path.startsWith(API_PREFIX) ? path : `${API_PREFIX}${path}`;
-  const response = await fetch(requestPath, {
+  const response = await fetch(resolveRequestPath(path), {
     method: 'POST',
     headers,
     body: formData,
@@ -96,12 +105,7 @@ async function requestForm<T>(path: string, formData: FormData, token?: string):
   });
 
   const text = await response.text();
-  let payload: unknown = text;
-  try {
-    payload = text ? JSON.parse(text) : null;
-  } catch {
-    payload = text;
-  }
+  const payload = parseTextPayload(text);
 
   if (!response.ok) {
     const message = typeof payload === 'object' && payload && 'detail' in payload ? String((payload as { detail: string }).detail) : `Request failed with status ${response.status}`;
@@ -135,6 +139,10 @@ export async function login(email: string, password: string) {
 
 export async function fetchMe(token: string) {
   return requestJson<AuthUser>('/auth/me', { method: 'GET' }, token);
+}
+
+export async function fetchWorkspaceSummary(token: string) {
+  return requestJson<WorkspaceSummary>('/auth/workspace-summary', { method: 'GET' }, token);
 }
 
 export async function fetchDashboardSummary(token: string) {
@@ -191,6 +199,14 @@ export async function fetchChats(token: string, query?: { limit?: number; offset
 
 export async function fetchChatDetail(token: string, sessionId: string) {
   return requestJson<ChatDetailResponse>(`/admin/chats/${sessionId}`, { method: 'GET' }, token);
+}
+
+export async function fetchChatSessions(token: string, query?: { limit?: number; offset?: number }) {
+  return requestJson<PaginatedResponse<ChatSessionItem>>(buildUrl('/chat/sessions', query), { method: 'GET' }, token);
+}
+
+export async function fetchChatSessionDetail(token: string, sessionId: string) {
+  return requestJson<ChatDetailResponse>(`/chat/sessions/${sessionId}`, { method: 'GET' }, token);
 }
 
 export async function fetchCollections(token: string) {
@@ -253,4 +269,90 @@ export async function deleteChats(token: string, ids: string[]) {
 
 export async function deleteCollections(token: string, ids: string[]) {
   return requestJson<DeleteResponse>('/admin/collections/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }, token);
+}
+
+function parseSseEventBlock(block: string): { comment?: string; event?: string; data?: string } | null {
+  const lines = block.split(/\r?\n/);
+  let eventName: string | undefined;
+  const dataLines: string[] = [];
+
+  for (const line of lines) {
+    if (!line) continue;
+    if (line.startsWith(':')) {
+      return { comment: line.slice(1).trim() };
+    }
+    if (line.startsWith('event:')) {
+      eventName = line.slice(6).trim();
+      continue;
+    }
+    if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trim());
+    }
+  }
+
+  if (!eventName && dataLines.length === 0) return null;
+  return { event: eventName, data: dataLines.join('\n') };
+}
+
+export async function streamChat(
+  token: string,
+  payload: StreamChatRequest,
+  handlers: {
+    onEvent?: (event: StreamChatEvent) => void;
+    onComment?: (comment: string) => void;
+  } = {},
+) {
+  const headers = new Headers();
+  headers.set('Accept', 'text/event-stream');
+  headers.set('Content-Type', 'application/json');
+  headers.set('Authorization', `Bearer ${token}`);
+
+  const response = await fetch(resolveRequestPath('/chat'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    const payloadError = parseTextPayload(text);
+    const message = typeof payloadError === 'object' && payloadError && 'detail' in payloadError ? String((payloadError as { detail: string }).detail) : `Request failed with status ${response.status}`;
+    throw new ApiError(message, response.status, payloadError);
+  }
+
+  if (!response.body) {
+    throw new ApiError('SSE response body is unavailable.', 500, null);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+
+    const parts = buffer.split(/\r?\n\r?\n/);
+    buffer = parts.pop() ?? '';
+
+    for (const block of parts) {
+      const parsed = parseSseEventBlock(block.trim());
+      if (!parsed) continue;
+      if (parsed.comment) {
+        handlers.onComment?.(parsed.comment);
+        continue;
+      }
+      const eventPayload = parsed.data ? parseTextPayload(parsed.data) : {};
+      handlers.onEvent?.(eventPayload as StreamChatEvent);
+    }
+
+    if (done) break;
+  }
+
+  if (buffer.trim()) {
+    const parsed = parseSseEventBlock(buffer.trim());
+    if (parsed?.comment) handlers.onComment?.(parsed.comment);
+    else if (parsed?.data) handlers.onEvent?.(parseTextPayload(parsed.data) as StreamChatEvent);
+  }
 }

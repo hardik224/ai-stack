@@ -6,6 +6,11 @@ import { useEffect, useState } from 'react';
 
 import { useAuth } from '@/components/auth-provider';
 import { Card } from '@/components/ui';
+import type { UserRole } from '@/features/admin/types';
+
+function defaultRoute(role: UserRole) {
+  return role === 'user' ? '/assistant' : '/dashboard';
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,8 +21,8 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (ready && user?.role === 'admin') {
-      router.replace('/dashboard');
+    if (ready && user?.role) {
+      router.replace(defaultRoute(user.role));
     }
   }, [ready, router, user]);
 
@@ -26,8 +31,8 @@ export default function LoginPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await login(email, password);
-      router.replace('/dashboard');
+      const signedInUser = await login(email, password);
+      router.replace(defaultRoute(signedInUser.role));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign in.');
     } finally {
@@ -42,15 +47,15 @@ export default function LoginPage() {
         <Card className="hidden min-h-[680px] overflow-hidden lg:flex lg:flex-col lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.4em] text-cyan-200/70">AI Stack</p>
-            <h1 className="mt-5 max-w-xl text-5xl font-semibold leading-tight text-white">A premium operational cockpit for retrieval, ingestion, and grounded chat systems.</h1>
-            <p className="mt-6 max-w-2xl text-base leading-8 text-slate-400">Monitor files, jobs, processes, users, and read-only chat transcripts through a focused dark interface tuned for admin workflows.</p>
+            <h1 className="mt-5 max-w-xl text-5xl font-semibold leading-tight text-white">A premium workspace for grounded knowledge, uploads, and streaming AI conversations.</h1>
+            <p className="mt-6 max-w-2xl text-base leading-8 text-slate-400">Admins, internal users, and end users all enter the same polished dark portal, with role-aware access to uploads, monitoring, and ChatGPT-style grounded answers.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             {[
-              'Glassmorphism cards with depth and motion.',
-              'Charts and progress states wired to live backend metrics.',
-              'Read-only chat transcript views with citations and status badges.',
-              'Role-aware provisioning flow for admins.',
+              'Structured markdown answers with live SSE streaming.',
+              'Upload PDFs and CSVs without making people understand collections.',
+              'Internal users can track their own files, jobs, and chat activity.',
+              'Admins keep the full operational and governance surface.',
             ].map((item) => (
               <div key={item} className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm leading-7 text-slate-300">{item}</div>
             ))}
@@ -63,8 +68,8 @@ export default function LoginPage() {
               <ShieldCheck className="size-6" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Admin access</p>
-              <h2 className="mt-2 text-3xl font-semibold text-white">Sign in to the portal</h2>
+              <p className="text-xs uppercase tracking-[0.35em] text-slate-500">Workspace access</p>
+              <h2 className="mt-2 text-3xl font-semibold text-white">Sign in to continue</h2>
             </div>
           </div>
           <form className="space-y-5" onSubmit={handleSubmit}>
@@ -79,7 +84,7 @@ export default function LoginPage() {
             {error ? <p className="rounded-2xl border border-rose-400/15 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
             <button type="submit" disabled={submitting} className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-indigo-400 px-5 py-3 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-70">
               <LockKeyhole className="size-4" />
-              {submitting ? 'Signing in...' : 'Enter admin portal'}
+              {submitting ? 'Signing in...' : 'Enter workspace'}
             </button>
           </form>
         </Card>

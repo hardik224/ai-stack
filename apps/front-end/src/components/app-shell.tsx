@@ -1,36 +1,67 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Activity, BookCopy, Boxes, ChevronRight, Cpu, DatabaseZap, LayoutDashboard, LogOut, MessageSquareText, Upload, Users } from 'lucide-react';
+import { Activity, BookCopy, Boxes, Bot, ChevronRight, Cpu, DatabaseZap, LayoutDashboard, LogOut, MessageSquareText, Upload, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo } from 'react';
 
 import { useAuth } from '@/components/auth-provider';
 import { Card, StatusBadge } from '@/components/ui';
+import type { UserRole } from '@/features/admin/types';
 import { cn, titleize } from '@/lib/utils';
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/users', label: 'Users', icon: Users },
-  { href: '/uploads', label: 'Uploads', icon: Upload },
-  { href: '/jobs', label: 'Jobs', icon: Boxes },
-  { href: '/processes', label: 'Processes', icon: DatabaseZap },
-  { href: '/activity', label: 'Activity', icon: Activity },
-  { href: '/chats', label: 'Chats', icon: MessageSquareText },
-  { href: '/collections', label: 'Collections', icon: BookCopy },
-  { href: '/models', label: 'Models', icon: Cpu },
-];
+const NAV_ITEMS: Record<UserRole, Array<{ href: string; label: string; icon: React.ComponentType<{ className?: string }> }>> = {
+  admin: [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/assistant', label: 'Assistant', icon: Bot },
+    { href: '/users', label: 'Users', icon: Users },
+    { href: '/uploads', label: 'Uploads', icon: Upload },
+    { href: '/jobs', label: 'Jobs', icon: Boxes },
+    { href: '/processes', label: 'Processes', icon: DatabaseZap },
+    { href: '/activity', label: 'Activity', icon: Activity },
+    { href: '/chats', label: 'Chats', icon: MessageSquareText },
+    { href: '/collections', label: 'Collections', icon: BookCopy },
+    { href: '/models', label: 'Models', icon: Cpu },
+  ],
+  internal_user: [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { href: '/assistant', label: 'Assistant', icon: Bot },
+    { href: '/uploads', label: 'Uploads', icon: Upload },
+  ],
+  user: [
+    { href: '/assistant', label: 'Assistant', icon: Bot },
+  ],
+};
 
 function pathLabel(pathname: string) {
-  const segment = pathname.split('/').filter(Boolean)[0] ?? 'dashboard';
+  const segment = pathname.split('/').filter(Boolean)[0] ?? 'assistant';
   return titleize(segment);
+}
+
+function getDefaultRoute(role: UserRole) {
+  return role === 'user' ? '/assistant' : '/dashboard';
+}
+
+function getPortalTitle(role: UserRole) {
+  if (role === 'admin') return 'Admin Portal';
+  if (role === 'internal_user') return 'Knowledge Workspace';
+  return 'Assistant Workspace';
+}
+
+function getPortalDescription(role: UserRole) {
+  if (role === 'admin') return 'Monitor users, uploads, jobs, chats, and platform health from one premium command center.';
+  if (role === 'internal_user') return 'Upload documents, track your ingestion flow, and work with a grounded assistant in one streamlined workspace.';
+  return 'Ask grounded questions and stream structured answers with citations from your knowledge base.';
 }
 
 export function ProtectedShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { ready, user, logout } = useAuth();
+  const role = user?.role;
+  const navItems = role ? NAV_ITEMS[role] : [];
+  const currentSection = pathname.split('/').filter(Boolean)[0] ?? (role ? getDefaultRoute(role).replace('/', '') : 'assistant');
 
   useEffect(() => {
     if (!ready) return;
@@ -38,19 +69,20 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
       router.replace('/login');
       return;
     }
-    if (user.role !== 'admin') {
-      router.replace('/login');
+    const allowedSections = new Set(navItems.map((item) => item.href.replace('/', '')));
+    if (!allowedSections.has(currentSection)) {
+      router.replace(getDefaultRoute(user.role));
     }
-  }, [ready, router, user]);
+  }, [currentSection, navItems, ready, router, user]);
 
   const headerLabel = useMemo(() => pathLabel(pathname), [pathname]);
 
-  if (!ready || !user || user.role !== 'admin') {
+  if (!ready || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.12),_transparent_35%),linear-gradient(180deg,_#050816,_#02030a)] text-slate-200">
         <div className="space-y-4 text-center">
           <div className="mx-auto h-14 w-14 animate-spin rounded-full border border-white/10 border-t-cyan-300" />
-          <p className="text-sm uppercase tracking-[0.35em] text-slate-400">Preparing admin portal</p>
+          <p className="text-sm uppercase tracking-[0.35em] text-slate-400">Preparing workspace</p>
         </div>
       </div>
     );
@@ -64,11 +96,11 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
             <Card className="overflow-hidden p-0">
               <div className="border-b border-white/10 bg-gradient-to-br from-cyan-400/10 via-transparent to-fuchsia-400/10 px-6 py-6">
                 <p className="text-xs uppercase tracking-[0.35em] text-cyan-200/70">AI Stack</p>
-                <h1 className="mt-3 text-2xl font-semibold text-white">Admin Portal</h1>
-                <p className="mt-2 text-sm leading-7 text-slate-400">Monitor users, uploads, jobs, chats, and platform health from one premium command center.</p>
+                <h1 className="mt-3 text-2xl font-semibold text-white">{getPortalTitle(user.role)}</h1>
+                <p className="mt-2 text-sm leading-7 text-slate-400">{getPortalDescription(user.role)}</p>
               </div>
               <nav className="space-y-1 p-4">
-                {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+                {navItems.map(({ href, label, icon: Icon }) => {
                   const active = pathname === href || pathname.startsWith(`${href}/`);
                   return (
                     <Link
@@ -114,7 +146,7 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 pb-10">
           <div className="mb-4 overflow-x-auto lg:hidden">
             <div className="flex min-w-max gap-2 rounded-3xl border border-white/10 bg-slate-950/55 p-2 backdrop-blur-xl">
-              {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+              {navItems.map(({ href, label, icon: Icon }) => {
                 const active = pathname === href || pathname.startsWith(`${href}/`);
                 return (
                   <Link

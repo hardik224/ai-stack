@@ -5,7 +5,7 @@ from fastapi import HTTPException, Request, status
 from app.config.settings import get_settings
 from app.library.hashing import generate_api_key, generate_session_token, hash_secret, verify_password
 from app.library.security import get_client_ip, utcnow
-from app.models import auth_model, user_model
+from app.models import auth_model, user_model, workspace_model
 from app.services.activity_service import record_activity
 
 
@@ -110,6 +110,29 @@ def create_api_key(*, payload, current_user: dict) -> dict:
 
 def list_api_keys(*, current_user: dict) -> dict:
     return {'items': auth_model.list_api_keys(current_user['id'])}
+
+
+def get_workspace_summary(*, current_user: dict) -> dict:
+    summary = workspace_model.get_workspace_summary(current_user['id'])
+    return summary or {
+        'user_id': current_user['id'],
+        'email': current_user.get('email'),
+        'full_name': current_user.get('full_name'),
+        'role': current_user.get('role'),
+        'file_count': 0,
+        'total_uploaded_bytes': 0,
+        'job_count': 0,
+        'queued_jobs': 0,
+        'processing_jobs': 0,
+        'completed_jobs': 0,
+        'failed_jobs': 0,
+        'chat_session_count': 0,
+        'message_count': 0,
+        'assistant_message_count': 0,
+        'failed_message_count': 0,
+        'last_upload_at': None,
+        'last_chat_at': None,
+    }
 
 
 

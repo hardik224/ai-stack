@@ -351,3 +351,48 @@ export interface DeleteResponse {
   };
   warnings?: string[];
 }
+
+
+export type ChatMode = 'knowledge_qa' | 'analysis';
+
+export interface WorkspaceSummary {
+  user_id: string;
+  email: string;
+  full_name?: string | null;
+  role: UserRole;
+  file_count: number;
+  total_uploaded_bytes: number;
+  last_upload_at?: string | null;
+  job_count: number;
+  queued_jobs: number;
+  processing_jobs: number;
+  completed_jobs: number;
+  failed_jobs: number;
+  chat_session_count: number;
+  message_count: number;
+  assistant_message_count: number;
+  failed_message_count: number;
+  last_chat_at?: string | null;
+}
+
+export interface StreamChatRequest {
+  message: string;
+  mode?: ChatMode;
+  session_id?: string | null;
+  collection_id?: string | null;
+  file_id?: string | null;
+  source_type?: 'pdf' | 'csv' | null;
+  top_k?: number | null;
+  score_threshold?: number | null;
+  dedupe?: boolean;
+  max_context_chunks?: number | null;
+  max_context_chars?: number | null;
+}
+
+export interface StreamChatEvent {
+  type: string;
+  timestamp?: string;
+  data?: Record<string, unknown>;
+  session_id?: string;
+  message_id?: string;
+}
