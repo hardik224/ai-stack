@@ -47,6 +47,16 @@ import { cn } from '@/lib/utils';
 
 const CHART_COLORS = ['#67e8f9', '#38bdf8', '#818cf8', '#a78bfa', '#f0abfc'];
 
+function getUserChartNames(fullName?: string | null, email?: string | null) {
+  const displayName = (fullName && fullName.trim()) || (email ? email.split('@')[0] : 'Unknown user');
+  const shortDisplayName = displayName.length > 16 ? `${displayName.slice(0, 16)}...` : displayName;
+
+  return {
+    display_name: displayName,
+    short_display_name: shortDisplayName,
+  };
+}
+
 const PAGE_SIZE = 20;
 
 function useToken() {
