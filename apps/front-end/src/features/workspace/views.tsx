@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Bot, FileText, LogOut, MessageSquare, Plus, SendHorizontal, Sparkles, UploadCloud } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeft, Bot, FileText, LogOut, MessageSquare, Plus, SendHorizontal, Sparkles, UploadCloud } from 'lucide-react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 
 import { useAuth } from '@/components/auth-provider';
 import { Card, EmptyState, ErrorState, MetricCard, SearchInput, SectionHeading, SkeletonCard, StatusBadge, TableShell, formatBytes, formatDateTime, formatNumber } from '@/components/ui';
-import { fetchChatSessionDetail, fetchChatSessions, fetchFiles, fetchWorkspaceSummary, streamChat, uploadFiles } from '@/features/admin/data';
+import { downloadFile, fetchChatSessionDetail, fetchChatSessions, fetchFiles, fetchWorkspaceSummary, streamChat, uploadFiles } from '@/features/admin/data';
 import type { ChatMessage, ChatMode, ChatSource, StreamChatEvent, UploadItem } from '@/features/admin/types';
 import { cn } from '@/lib/utils';
 
@@ -156,15 +156,24 @@ function SharedUploadDialog() {
   );
 }
 
-function normalizeAnswerContent(content: string) {
-  return content.replace(/(\[S\d+\])(\s*[.,]?\s*\[S\d+\])+/g, (match) => {
+function normalizeAnswerContent(content: string, hideReferences = false) {
+  let normalized = content.replace(/(\[S\d+\])(\s*[.,]?\s*\[S\d+\])+/g, (match) => {
     const labels = match.match(/\[S\d+\]/g) ?? [];
     return labels.filter((label, index) => index === 0 || label !== labels[index - 1]).join(' ');
   });
+
+  if (hideReferences) {
+    normalized = normalized
+      .replace(/\s*\[S\d+\]/g, '')
+      .replace(/\n{2,}(##?\s*Sources|Sources)\s*[\s\S]*$/i, '')
+      .trim();
+  }
+
+  return normalized;
 }
 
-function MarkdownAnswer({ content }: { content: string }) {
-  const normalizedContent = normalizeAnswerContent(content);
+function MarkdownAnswer({ content, hideReferences = false }: { content: string; hideReferences?: boolean }) {
+  const normalizedContent = normalizeAnswerContent(content, hideReferences);
 
   return (
     <div className="space-y-4 text-[15px] leading-8 text-slate-100">
@@ -188,10 +197,11 @@ function MarkdownAnswer({ content }: { content: string }) {
   );
 }
 
-function MessageBubble({ message }: { message: LocalChatMessage }) {
+function MessageBubble({ message, viewerRole, onDownloadSource }: { message: LocalChatMessage; viewerRole?: string | null; onDownloadSource?: (source: ChatSource) => void }) {
   const isUser = message.role === 'user';
+  const canShowSources = viewerRole !== 'user';
   const citedLabels = new Set(Array.from((message.content || '').matchAll(/\[(S\d+)\]/g)).map((match) => match[1]));
-  const visibleSources = !isUser && message.sources?.length
+  const visibleSources = !isUser && canShowSources && message.sources?.length
     ? Array.from(
         message.sources
           .filter((source) => citedLabels.has(source.citation_label))
@@ -236,9 +246,9 @@ function MessageBubble({ message }: { message: LocalChatMessage }) {
             <p className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Sources</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {visibleSources.map((source) => (
-                <div key={`${message.id}-${source.file_id || source.file_name || source.chunk_id}`} className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200">
+                <button key={`${message.id}-${source.file_id || source.file_name || source.chunk_id}`} onClick={() => onDownloadSource?.(source)} disabled={!source.file_id} className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60">
                   <span className="font-semibold text-white">[{source.citation_label}]</span> {source.file_name || 'Source'}
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -268,6 +278,15 @@ function AssistantView() {
   const [streamError, setStreamError] = useState<string | null>(null);
   const [sessionSearch, setSessionSearch] = useState('');
   const [isNewChatDraft, setIsNewChatDraft] = useState(false);
+
+  async function handleDownloadFile(fileId: string, fileName?: string | null) {
+    if (!fileId) return;
+    try {
+      await downloadFile(token, fileId, fileName || 'download');
+    } catch (error) {
+      setStreamError(error instanceof Error ? error.message : 'Failed to download file.');
+    }
+  }
 
   const sessionsQuery = useQuery({
     queryKey: ['chat-sessions'],
@@ -673,6 +692,9 @@ function AssistantView() {
 
 function WorkspaceDashboardView() {
   const token = useToken();
+  const handleDownloadFile = async (fileId: string, fileName?: string | null) => {
+    await downloadFile(token, fileId, fileName || 'download');
+  };
   const summaryQuery = useQuery({ queryKey: ['workspace-summary'], queryFn: () => fetchWorkspaceSummary(token) });
   const filesQuery = useQuery({ queryKey: ['files', 1], queryFn: () => fetchFiles(token, { limit: 5, offset: 0 }) });
   const chatsQuery = useQuery({ queryKey: ['chat-sessions', 'dashboard'], queryFn: () => fetchChatSessions(token, { limit: 5, offset: 0 }) });
@@ -702,11 +724,16 @@ function WorkspaceDashboardView() {
                 {filesQuery.data.items.map((file) => (
                   <div key={file.id} className="rounded-2xl border border-white/8 bg-white/4 p-4">
                     <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-semibold text-white">{file.original_name}</p>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-white">{file.original_name}</p>
                         <p className="mt-2 text-sm text-slate-400">{file.collection_name || 'Managed upload collection'} | {formatBytes(file.size_bytes)}</p>
                       </div>
-                      <StatusBadge value={file.latest_job_status || file.latest_job_stage || 'queued'} />
+                      <div className="flex items-center gap-2">
+                        <StatusBadge value={file.latest_job_status || file.latest_job_stage || 'queued'} />
+                        <button onClick={() => void handleDownloadFile(file.id, file.original_name)} className="inline-flex size-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white" title="Download file" aria-label="Download file">
+                          <ArrowDownToLine className="size-4" />
+                        </button>
+                      </div>
                     </div>
                     <p className="mt-3 text-xs text-slate-500">Uploaded {formatDateTime(file.created_at)}</p>
                   </div>
@@ -750,6 +777,9 @@ function WorkspaceDashboardView() {
 
 function WorkspaceUploadsView() {
   const token = useToken();
+  const handleDownloadFile = async (fileId: string, fileName?: string | null) => {
+    await downloadFile(token, fileId, fileName || 'download');
+  };
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const offset = (page - 1) * PAGE_SIZE;
@@ -781,6 +811,7 @@ function WorkspaceUploadsView() {
                         <th className="px-5 py-4 font-medium">Size</th>
                         <th className="px-5 py-4 font-medium">Ingestion</th>
                         <th className="px-5 py-4 font-medium">Uploaded</th>
+                        <th className="px-5 py-4 font-medium">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
@@ -796,6 +827,7 @@ function WorkspaceUploadsView() {
                           <td className="px-5 py-4 text-slate-300">{formatBytes(item.size_bytes)}</td>
                           <td className="px-5 py-4"><StatusBadge value={item.latest_job_status || item.latest_job_stage || 'queued'} /></td>
                           <td className="px-5 py-4 text-slate-400">{formatDateTime(item.created_at)}</td>
+                          <td className="px-5 py-4"><button onClick={() => void handleDownloadFile(item.id, item.original_name)} className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 transition hover:bg-white/10"><ArrowDownToLine className="size-4" />Download</button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -805,7 +837,7 @@ function WorkspaceUploadsView() {
               <PaginationControls page={page} pageSize={PAGE_SIZE} itemCount={items.length} onPrevious={() => setPage((current) => Math.max(1, current - 1))} onNext={() => setPage((current) => current + 1)} />
             </>
           ) : (
-            <EmptyState title="No uploaded files matched the current search" description="Try a broader search or upload a new PDF/CSV to start ingestion." />
+            <EmptyState title="No uploaded files matched the current search" description="Try a broader search or upload a new PDF, CSV, or Excel file to start ingestion." />
           )}
         </div>
       </Card>

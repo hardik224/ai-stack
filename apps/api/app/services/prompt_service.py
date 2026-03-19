@@ -29,6 +29,7 @@ MODE_GUIDANCE = {
             'Include a Sources section only when you cite evidence.',
             'If evidence is incomplete, add a short ## Uncertainty section.',
             'Prefer direct operational guidance for SOPs, product docs, and internal manuals.',
+            'Use source filenames as helpful context when identifying where evidence came from or distinguishing similarly named APIs, reports, or documents.',
         ],
     },
     'analysis': {
@@ -54,6 +55,7 @@ MODE_GUIDANCE = {
             'Use markdown structure naturally; do not force the same section layout for every answer.',
             'Cite supported findings inline with [S#].',
             'Show comparisons, trends, exceptions, or risk points only when grounded in the evidence.',
+            'Use source filenames and sheet/page/row hints when they help distinguish evidence from different uploaded files.',
             'If data is incomplete for a full conclusion, explicitly state the gap in ## Uncertainty.',
         ],
     },

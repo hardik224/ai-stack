@@ -23,3 +23,7 @@ def get_file(file_id: UUID, current_user: dict):
 
 def get_job(job_id: UUID, current_user: dict):
     return file_service.get_job(job_id=job_id, current_user=current_user)
+
+
+def download_file(file_id: UUID, current_user: dict):
+    return file_service.download_file(file_id=file_id, current_user=current_user)

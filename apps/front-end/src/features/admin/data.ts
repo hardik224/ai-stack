@@ -251,6 +251,40 @@ export async function uploadFiles(token: string, files: File[]) {
   return Promise.all(files.map((file) => uploadFile(token, { file })));
 }
 
+
+export async function downloadFile(token: string, fileId: string, fallbackName?: string) {
+  const headers = new Headers();
+  headers.set('Accept', '*/*');
+  headers.set('Authorization', `Bearer ${token}`);
+
+  const response = await fetch(resolveRequestPath(`/files/${fileId}/download`), {
+    method: 'GET',
+    headers,
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    const payload = parseTextPayload(text);
+    const message = typeof payload === 'object' && payload && 'detail' in payload ? String((payload as { detail: string }).detail) : `Download failed with status ${response.status}`;
+    throw new ApiError(message, response.status, payload);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const utfName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const basicName = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  const fileName = utfName ? decodeURIComponent(utfName) : basicName || fallbackName || 'download';
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
+}
+
 export async function deleteUsers(token: string, ids: string[]) {
   return requestJson<DeleteResponse>('/admin/users/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }, token);
 }

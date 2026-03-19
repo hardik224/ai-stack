@@ -1,14 +1,17 @@
 import hashlib
+from io import BytesIO
 from pathlib import Path
+from urllib.parse import quote
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 
 from app.config.settings import get_settings
 from app.library.db import transaction
 from app.library.queue import enqueue_json
 from app.library.security import require_condition, sanitize_filename, slugify, utcnow, validate_limit_offset
-from app.library.storage import upload_bytes
+from app.library.storage import download_bytes, upload_bytes
 from app.models import collection_model, file_model, job_model
 from app.services.activity_service import record_activity
 
@@ -311,3 +314,21 @@ def get_job(*, job_id: UUID, current_user: dict) -> dict:
             'error_message': job.get('error_message'),
         },
     }
+
+
+
+def download_file(*, file_id: UUID, current_user: dict):
+    file_record = file_model.get_file(file_id)
+    if not file_record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='File not found.')
+    if current_user['role'] != 'admin' and str(file_record['uploaded_by']) != str(current_user['id']):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Not allowed to download this file.')
+
+    content = download_bytes(file_record['minio_bucket'], file_record['minio_object_key'])
+    filename = file_record.get('original_name') or f"{file_record['id']}"
+    headers = {'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename)}"}
+    return StreamingResponse(
+        BytesIO(content),
+        media_type=file_record.get('content_type') or 'application/octet-stream',
+        headers=headers,
+    )

@@ -52,6 +52,13 @@ def upload_bytes(bucket_name: str, object_key: str, content: bytes, content_type
     )
 
 
+def download_bytes(bucket_name: str, object_key: str) -> bytes:
+    client = get_storage_client()
+    response = client.get_object(Bucket=bucket_name, Key=object_key)
+    body = response.get('Body')
+    return body.read() if body else b''
+
+
 def delete_object(bucket_name: str, object_key: str) -> None:
     client = get_storage_client()
     try:

@@ -32,6 +32,11 @@ def get_file(file_id: UUID, current_user: dict = Depends(require_roles("admin", 
     return file_controller.get_file(file_id=file_id, current_user=current_user)
 
 
+@router.get("/files/{file_id}/download")
+def download_file(file_id: UUID, current_user: dict = Depends(require_roles("admin", "internal_user"))):
+    return file_controller.download_file(file_id=file_id, current_user=current_user)
+
+
 @router.get("/jobs/{job_id}")
 def get_job(job_id: UUID, current_user: dict = Depends(require_roles("admin", "internal_user"))):
     return file_controller.get_job(job_id=job_id, current_user=current_user)

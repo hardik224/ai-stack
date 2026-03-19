@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Activity, ArrowRight, Bot, Boxes, ChevronLeft, ChevronRight, Cpu, DatabaseZap, FileClock, Filter, FolderKanban, HardDriveDownload, MessageSquareText, Pencil, Power, ShieldCheck, Trash2, UploadCloud, UserPlus, Users } from 'lucide-react';
+import { Activity, ArrowDownToLine, ArrowRight, Bot, Boxes, ChevronLeft, ChevronRight, Cpu, DatabaseZap, FileClock, Filter, FolderKanban, HardDriveDownload, MessageSquareText, Pencil, Power, ShieldCheck, Trash2, UploadCloud, UserPlus, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Area, AreaChart } from 'recharts';
@@ -40,6 +40,7 @@ import {
   fetchUploadSummary,
   updateLlmConfig,
   uploadFiles,
+  downloadFile,
 } from '@/features/admin/data';
 import type { CreateUserPayload, LlmConfigItem, LlmConfigPayload, LlmProviderType, UserRole } from '@/features/admin/types';
 import { cn } from '@/lib/utils';
@@ -547,6 +548,9 @@ function UserDetailView({ id }: { id: string }) {
 
 function UploadsView() {
   const token = useToken();
+  const handleDownloadFile = async (fileId: string, fileName?: string | null) => {
+    await downloadFile(token, fileId, fileName || 'download');
+  };
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -1078,6 +1082,9 @@ function ChatsView() {
 
 function ChatDetailView({ id }: { id: string }) {
   const token = useToken();
+  const handleDownloadFile = async (fileId: string, fileName?: string | null) => {
+    await downloadFile(token, fileId, fileName || 'download');
+  };
   const query = useQuery({ queryKey: ['admin-chat-detail', id], queryFn: () => fetchChatDetail(token, id) });
 
   return (
@@ -1113,11 +1120,9 @@ function ChatDetailView({ id }: { id: string }) {
                       {message.sources?.length ? (
                         <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-4">
                           {message.sources.map((source) => (
-                            <div key={`${message.id}-${source.citation_label}-${source.chunk_id}`} className="rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">
+                            <button key={`${message.id}-${source.file_id || source.file_name || source.chunk_id}`} onClick={() => void handleDownloadFile(source.file_id, source.file_name)} className="rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-slate-300 transition hover:bg-white/5">
                               <span className="font-semibold text-cyan-200">[{source.citation_label}]</span> {source.file_name || source.file_id}
-                              {source.page_number ? ` | page ${source.page_number}` : ''}
-                              {source.row_number ? ` | row ${source.row_number}` : ''}
-                            </div>
+                            </button>
                           ))}
                         </div>
                       ) : null}
