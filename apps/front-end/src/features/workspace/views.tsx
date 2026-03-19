@@ -179,6 +179,7 @@ function AssistantView() {
   const { user, logout } = useAuth();
   const queryClient = useQueryClient();
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const streamQueueRef = useRef<string[]>([]);
   const streamIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const assistantMessageIdRef = useRef<string | null>(null);
@@ -218,6 +219,13 @@ function AssistantView() {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, streamStatus]);
 
+  useEffect(() => {
+    const textarea = composerRef.current;
+    if (!textarea) return;
+    textarea.style.height = '0px';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+  }, [draft]);
+
   useEffect(
     () => () => {
       if (streamIntervalRef.current) {
@@ -240,6 +248,20 @@ function AssistantView() {
       clearInterval(streamIntervalRef.current);
       streamIntervalRef.current = null;
     }
+  }
+
+  function enqueueStreamDelta(delta: string) {
+    const pieces: string[] = [];
+    let buffer = '';
+    for (const char of delta) {
+      buffer += char;
+      if (/\s/.test(char) || buffer.length >= 3) {
+        pieces.push(buffer);
+        buffer = '';
+      }
+    }
+    if (buffer) pieces.push(buffer);
+    streamQueueRef.current.push(...pieces);
   }
 
   function flushStreamQueue(force = false) {
@@ -333,7 +355,7 @@ function AssistantView() {
               case 'content.delta': {
                 const delta = typeof event.data?.delta === 'string' ? event.data.delta : '';
                 if (!delta) break;
-                streamQueueRef.current.push(delta);
+                enqueueStreamDelta(delta);
                 flushStreamQueue();
                 break;
               }
@@ -446,21 +468,21 @@ function AssistantView() {
           )}
         </div>
 
-        <div className="border-t border-white/10 px-4 py-4">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-            <p className="text-sm font-medium text-white">{user?.full_name || user?.email}</p>
-            <p className="mt-1 text-xs text-slate-500">{user?.email}</p>
-            <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="border-t border-white/10 px-3 py-3">
+          <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
+            <p className="truncate text-sm font-medium text-white">{user?.full_name || user?.email}</p>
+            <p className="mt-1 truncate text-xs text-slate-500">{user?.email}</p>
+            <div className="mt-3 flex items-center gap-2">
               <StatusBadge value={user?.role || 'user'} />
-              {user?.role !== 'user' ? <Link href="/dashboard" className="text-xs text-slate-400 transition hover:text-white">Dashboard</Link> : null}
+              {user?.role !== 'user' ? <Link href="/dashboard" className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-slate-300 transition hover:bg-white/5 hover:text-white">Dashboard</Link> : null}
               <button
                 onClick={() => {
                   logout();
                   window.location.href = '/login';
                 }}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/5"
+                className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 text-[11px] text-slate-300 transition hover:bg-white/5"
               >
-                <LogOut className="size-3.5" />
+                <LogOut className="size-3" />
                 Logout
               </button>
             </div>
@@ -518,14 +540,15 @@ function AssistantView() {
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-white/10 bg-[#212121] px-6 py-4">
+        <div className="shrink-0 border-t border-white/10 bg-[#212121] px-5 py-3">
           <div className="mx-auto w-full max-w-[880px]">
-            <div className="mb-3 flex min-h-5 items-center gap-3 text-sm text-slate-500">
-              {streamStatus ? <span>{streamStatus}</span> : <span>{streamError ? '' : 'Answers stream live with grounded citations.'}</span>}
-              {streamError ? <span className="text-rose-300">{streamError}</span> : null}
-            </div>
-            <div className="rounded-[30px] border border-white/10 bg-[#2f2f2f] px-4 py-3 shadow-[0_24px_70px_-38px_rgba(0,0,0,0.9)]">
+            <div className="flex items-center gap-3 rounded-[28px] border border-white/10 bg-[#2f2f2f] px-3 py-2.5 shadow-[0_24px_70px_-38px_rgba(0,0,0,0.9)]">
+              <div className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-white/5 text-slate-400">
+                <Sparkles className="size-4" />
+              </div>
               <textarea
+                ref={composerRef}
+                rows={1}
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
@@ -535,17 +558,16 @@ function AssistantView() {
                   }
                 }}
                 placeholder={user?.role === 'user' ? 'Ask anything from your uploaded knowledge base...' : 'Ask a grounded question, summarize documents, or analyze uploaded reports...'}
-                className="min-h-24 w-full resize-none bg-transparent px-2 py-2 text-[15px] leading-7 text-white outline-none placeholder:text-slate-500"
+                className="max-h-[120px] min-h-[26px] flex-1 resize-none overflow-y-auto bg-transparent py-1 text-[15px] leading-7 text-white outline-none placeholder:text-slate-500"
               />
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <Sparkles className="size-4" />
-                  {streaming ? 'Streaming response...' : 'Press Enter to send'}
-                </div>
+              <div className="flex shrink-0 items-center gap-2 self-end pb-0.5">
+                <span className={cn('hidden text-xs sm:inline', streamError ? 'text-rose-300' : 'text-slate-500')}>
+                  {streamError ? streamError : streaming ? 'Streaming...' : streamStatus || 'Enter to send'}
+                </span>
                 <button
                   onClick={() => void handleSend()}
                   disabled={streaming || !draft.trim()}
-                  className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <SendHorizontal className="size-4" />
                   Send
