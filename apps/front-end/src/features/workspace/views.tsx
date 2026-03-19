@@ -200,6 +200,9 @@ function MarkdownAnswer({ content, hideReferences = false }: { content: string; 
 function MessageBubble({ message, viewerRole, onDownloadSource }: { message: LocalChatMessage; viewerRole?: string | null; onDownloadSource?: (source: ChatSource) => void }) {
   const isUser = message.role === 'user';
   const canShowSources = viewerRole !== 'user';
+  const normalizedContent = (message.content || '').trim();
+  const normalizedError = (message.error_message || '').trim();
+  const suppressAssistantContent = !isUser && message.status === 'failed' && normalizedContent && (normalizedContent === normalizedError || normalizedContent === 'Something went wrong while generating the answer. Please contact the administrator.');
   const citedLabels = new Set(Array.from((message.content || '').matchAll(/\[(S\d+)\]/g)).map((match) => match[1]));
   const visibleSources = !isUser && canShowSources && message.sources?.length
     ? Array.from(
@@ -237,7 +240,7 @@ function MessageBubble({ message, viewerRole, onDownloadSource }: { message: Loc
 
         {isUser ? (
           <p className="whitespace-pre-wrap text-[15px] leading-8 text-white">{message.content}</p>
-        ) : (
+        ) : suppressAssistantContent ? null : (
           <MarkdownAnswer content={message.content || '...'} />
         )}
 
@@ -333,6 +336,17 @@ function AssistantView() {
   );
 
   const currentSession = selectedSessionId ? (sessionsQuery.data?.items.find((item) => item.id === selectedSessionId) ?? detailQuery.data?.session ?? null) : null;
+
+  useEffect(() => {
+    const baseTitle = 'AI Stack';
+    const sessionTitle = (currentSession?.title || '').trim();
+    if (sessionTitle) {
+      document.title = `${sessionTitle} | ${baseTitle}`;
+      return;
+    }
+    document.title = `${isNewChatDraft || !selectedSessionId ? 'New chat' : 'Assistant'} | ${baseTitle}`;
+  }, [currentSession?.title, isNewChatDraft, selectedSessionId]);
+
   const filteredSessions = useMemo(
     () => (sessionsQuery.data?.items ?? []).filter((session) => [session.title, session.last_message_content].join(' ').toLowerCase().includes(sessionSearch.toLowerCase())),
     [sessionSearch, sessionsQuery.data?.items],

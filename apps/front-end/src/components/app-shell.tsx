@@ -79,6 +79,11 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   const headerLabel = useMemo(() => pathLabel(pathname), [pathname]);
   const isAssistantRoute = pathname === '/assistant' || pathname.startsWith('/assistant/');
 
+  useEffect(() => {
+    if (!ready || !user || isAssistantRoute) return;
+    document.title = `${headerLabel} | AI Stack`;
+  }, [headerLabel, isAssistantRoute, ready, user]);
+
   if (!ready || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.12),_transparent_35%),linear-gradient(180deg,_#050816,_#02030a)] text-slate-200">
