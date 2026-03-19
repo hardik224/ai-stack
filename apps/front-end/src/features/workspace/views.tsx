@@ -374,15 +374,15 @@ function AssistantView() {
   }
 
   return (
-    <div className="grid min-h-[78vh] gap-0 overflow-hidden rounded-[32px] border border-white/10 bg-[#111214]/90 shadow-[0_50px_160px_-70px_rgba(15,23,42,0.98)] xl:grid-cols-[320px_minmax(0,1fr)]">
-      <aside className="border-r border-white/8 bg-[#17181a]/92">
+    <div className="grid h-[calc(100vh-2rem)] min-h-[720px] gap-0 overflow-hidden rounded-[32px] border border-white/10 bg-[#111214]/90 shadow-[0_50px_160px_-70px_rgba(15,23,42,0.98)] xl:grid-cols-[320px_minmax(0,1fr)]">
+      <aside className="flex min-h-0 flex-col border-r border-white/8 bg-[#17181a]/92">
         <div className="border-b border-white/8 px-4 py-4">
           <button onClick={startNewChat} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10"><Plus className="size-4" />New chat</button>
           <div className="mt-3">
             <SearchInput value={sessionSearch} onChange={setSessionSearch} placeholder="Search chats" />
           </div>
         </div>
-        <div className="max-h-[calc(78vh-96px)] overflow-y-auto p-3">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {sessionsQuery.isLoading ? (
             <div className="space-y-3">
               <SkeletonCard />
@@ -408,7 +408,7 @@ function AssistantView() {
         </div>
       </aside>
 
-      <section className="flex min-h-[78vh] flex-col bg-[#212121]">
+      <section className="flex min-h-0 flex-col bg-[#212121]">
         <div className="border-b border-white/8 px-6 py-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -430,7 +430,7 @@ function AssistantView() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-8">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8">
           <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
             {detailQuery.isLoading && selectedSessionId && !messages.length ? (
               <div className="space-y-4">
@@ -454,7 +454,7 @@ function AssistantView() {
           </div>
         </div>
 
-        <div className="border-t border-white/8 bg-[#212121] px-6 py-5">
+        <div className="shrink-0 border-t border-white/8 bg-[#212121] px-6 py-5">
           <div className="mx-auto w-full max-w-4xl">
             <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-slate-400">
               {streamStatus ? <span>{streamStatus}</span> : <span>Live SSE streaming | Structured markdown | Citation-aware answers</span>}
