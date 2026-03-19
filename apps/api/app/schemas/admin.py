@@ -8,7 +8,7 @@ class BulkDeleteRequest(BaseModel):
     ids: list[UUID] = Field(default_factory=list, min_length=1)
 
 
-LLMProvider = Literal['anthropic', 'openai', 'openai_compatible']
+LLMProvider = Literal['anthropic', 'openai', 'openai_compatible', 'gemini']
 
 
 class LlmConfigCreateRequest(BaseModel):

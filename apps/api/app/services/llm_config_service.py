@@ -12,7 +12,7 @@ from app.models import llm_config_model
 from app.services.activity_service import record_activity
 
 
-ALLOWED_PROVIDERS = {'anthropic', 'openai', 'openai_compatible'}
+ALLOWED_PROVIDERS = {'anthropic', 'openai', 'openai_compatible', 'gemini'}
 
 
 @dataclass(frozen=True)
@@ -139,7 +139,7 @@ def _validate_payload(*, provider: str, base_url: str | None, api_key: str | Non
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Model name is required.')
     if normalized_provider == 'openai_compatible' and not normalized_base_url:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Base URL is required for openai_compatible provider.')
-    if normalized_provider in {'anthropic', 'openai'} and not normalized_api_key and is_enabled:
+    if normalized_provider in {'anthropic', 'openai', 'gemini'} and not normalized_api_key and is_enabled:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='API key is required for enabled cloud providers.')
     return normalized_provider, normalized_base_url, normalized_api_key, normalized_model
 

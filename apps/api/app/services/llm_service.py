@@ -14,6 +14,13 @@ try:
 except ImportError:  # pragma: no cover - optional future provider
     Anthropic = None
 
+try:
+    from google import genai
+    from google.genai import types as genai_types
+except ImportError:  # pragma: no cover - optional future provider
+    genai = None
+    genai_types = None
+
 
 @dataclass(frozen=True)
 class LLMStreamRequest:
@@ -88,6 +95,49 @@ class OpenAIProvider:
                 yield content
 
 
+
+
+class GeminiProvider:
+    def __init__(self, config: RuntimeLLMConfig):
+        if genai is None or genai_types is None:
+            raise RuntimeError('Gemini provider selected but the google-genai package is not installed.')
+        self.config = config
+        self.client = genai.Client(api_key=config.api_key)
+
+    def stream_chat(self, request: LLMStreamRequest) -> Iterator[str]:
+        system_parts: list[str] = []
+        prompt_parts: list[str] = []
+        for message in request.messages:
+            role = message.get('role')
+            content = message.get('content', '')
+            if not content:
+                continue
+            if role == 'system':
+                system_parts.append(content)
+            elif role == 'assistant':
+                prompt_parts.append(f"Assistant:\n{content}")
+            else:
+                prompt_parts.append(f"User:\n{content}")
+
+        config_kwargs = {
+            'temperature': _resolve_temperature(self.config, request.mode),
+            'top_p': self.config.top_p,
+            'max_output_tokens': self.config.max_output_tokens,
+        }
+        if system_parts:
+            config_kwargs['system_instruction'] = '\n\n'.join(system_parts)
+
+        stream = self.client.models.generate_content_stream(
+            model=request.model or self.config.model,
+            contents='\n\n'.join(prompt_parts),
+            config=genai_types.GenerateContentConfig(**config_kwargs),
+        )
+        for chunk in stream:
+            text = getattr(chunk, 'text', None)
+            if text:
+                yield text
+
+
 class AnthropicProvider:
     def __init__(self, config: RuntimeLLMConfig):
         if Anthropic is None:
@@ -135,6 +185,8 @@ def _build_provider(config: RuntimeLLMConfig) -> LLMProvider:
         return OpenAIProvider(config)
     if provider_name == 'anthropic':
         return AnthropicProvider(config)
+    if provider_name == 'gemini':
+        return GeminiProvider(config)
     raise RuntimeError(f"Unsupported LLM provider '{provider_name}'.")
 
 

@@ -1219,6 +1219,7 @@ function ModelsView() {
               <option value="">All providers</option>
               <option value="anthropic">Anthropic</option>
               <option value="openai">OpenAI</option>
+              <option value="gemini">Google Gemini</option>
               <option value="openai_compatible">OpenAI Compatible / Self-hosted</option>
             </select>
           </div>
@@ -1276,6 +1277,7 @@ function ModelsView() {
                 <select value={form.provider} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value as LlmProviderType }))} className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none">
                   <option value="anthropic">Anthropic / Claude</option>
                   <option value="openai">OpenAI</option>
+                  <option value="gemini">Google Gemini</option>
                   <option value="openai_compatible">OpenAI Compatible / Self-hosted</option>
                 </select>
               </label>
@@ -1285,7 +1287,7 @@ function ModelsView() {
               </label>
               <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
                 <span className="text-xs uppercase tracking-[0.24em] text-slate-500">Base URL</span>
-                <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Leave blank for Anthropic/OpenAI defaults, or add your self-hosted endpoint" value={form.base_url ?? ''} onChange={(event) => setForm((current) => ({ ...current, base_url: event.target.value }))} />
+                <input className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none" placeholder="Leave blank for Anthropic, OpenAI, or Gemini defaults, or add your self-hosted endpoint" value={form.base_url ?? ''} onChange={(event) => setForm((current) => ({ ...current, base_url: event.target.value }))} />
               </label>
               <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
                 <span className="text-xs uppercase tracking-[0.24em] text-slate-500">API key</span>

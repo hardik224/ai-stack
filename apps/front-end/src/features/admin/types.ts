@@ -1,5 +1,5 @@
 export type UserRole = 'admin' | 'internal_user' | 'user';
-export type LlmProviderType = 'anthropic' | 'openai' | 'openai_compatible';
+export type LlmProviderType = 'anthropic' | 'openai' | 'openai_compatible' | 'gemini';
 
 export interface AuthUser {
   id: string;
