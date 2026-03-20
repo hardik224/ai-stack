@@ -364,26 +364,13 @@ function AssistantView() {
     let buffer = '';
     for (const char of delta) {
       buffer += char;
-      if (/\s/.test(char) || /[.,!?;:]/.test(char) || buffer.length >= 2) {
+      if (/\s/.test(char) || buffer.length >= 3) {
         pieces.push(buffer);
         buffer = '';
       }
     }
     if (buffer) pieces.push(buffer);
     streamQueueRef.current.push(...pieces);
-  }
-
-  async function waitForStreamQueueToDrain() {
-    await new Promise<void>((resolve) => {
-      const check = () => {
-        if (!streamQueueRef.current.length && !streamIntervalRef.current) {
-          resolve();
-          return;
-        }
-        window.setTimeout(check, 24);
-      };
-      check();
-    });
   }
 
   function flushStreamQueue(force = false) {
@@ -410,7 +397,7 @@ function AssistantView() {
       if (!streamQueueRef.current.length) {
         stopStreamAnimation();
       }
-    }, 14);
+    }, 18);
   }
 
   function startNewChat() {
@@ -491,7 +478,8 @@ function AssistantView() {
                 setMessages((current) => current.map((message) => (message.id === assistantMessageId || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false, sources: message.sources ?? [], citation_count: message.citation_count ?? 0 } : message)));
                 break;
               case 'generation.completed':
-                setStreamStatus(streamQueueRef.current.length ? 'Finishing answer...' : 'Answer ready');
+                flushStreamQueue(true);
+                setStreamStatus('Answer ready');
                 assistantMessageIdRef.current = event.message_id || assistantMessageIdRef.current;
                 setMessages((current) => current.map((message) => (message.id === assistantMessageId || message.id === event.message_id || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false, sources: message.sources ?? [], citation_count: message.citation_count ?? 0 } : message)));
                 break;
@@ -516,9 +504,7 @@ function AssistantView() {
       setMessages((current) => current.map((item) => (item.id === assistantMessageIdRef.current || item.id === assistantMessageId ? { ...item, status: 'failed', error_message: message, isTransient: false } : item)));
     } finally {
       setStreaming(false);
-      if (streamQueueRef.current.length || streamIntervalRef.current) {
-        await waitForStreamQueueToDrain();
-      } else {
+      if (!streamQueueRef.current.length) {
         stopStreamAnimation();
       }
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
