@@ -381,7 +381,7 @@ export interface StreamChatRequest {
   session_id?: string | null;
   collection_id?: string | null;
   file_id?: string | null;
-  source_type?: 'pdf' | 'csv' | 'excel' | null;
+  source_type?: 'pdf' | 'csv' | 'excel' | 'txt' | null;
   top_k?: number | null;
   score_threshold?: number | null;
   dedupe?: boolean;

@@ -13,6 +13,7 @@ from app.services.excel_processor import parse_excel_bytes
 from app.services.embedding_service import embed_in_batches
 from app.services.indexing_service import upsert_chunk_vectors
 from app.services.pdf_processor import parse_pdf_bytes
+from app.services.text_processor import parse_text_bytes
 from app.services.progress_service import JobTracker, get_job_context, mark_chunks_indexed, utcnow, replace_file_chunks
 
 
@@ -25,6 +26,7 @@ SUPPORTED_CONTENT_TYPES = {
     'application/excel': 'excel',
     'application/x-excel': 'excel',
     'application/x-msexcel': 'excel',
+    'text/plain': 'txt',
 }
 
 
@@ -245,6 +247,8 @@ def _parse_file(*, job: dict, content: bytes) -> dict:
         return parse_csv_bytes(content)
     if source_type == 'excel':
         return parse_excel_bytes(content)
+    if source_type == 'txt':
+        return parse_text_bytes(content)
     raise ValueError(f"Unsupported content type '{job['content_type']}'.")
 
 

@@ -176,7 +176,7 @@ function UploadDialog() {
 
   const mutation = useMutation({
     mutationFn: () => {
-      if (!files.length) throw new Error('At least one PDF, CSV, or Excel file is required.');
+      if (!files.length) throw new Error('At least one PDF, CSV, Excel, or TXT file is required.');
       return uploadFiles(token, files);
     },
     onSuccess: () => {
@@ -193,7 +193,7 @@ function UploadDialog() {
 
   const addFiles = (incoming: FileList | File[] | null | undefined) => {
     if (!incoming) return;
-    const next = Array.from(incoming).filter((file) => /\.(pdf|csv|xlsx|xls)$/i.test(file.name));
+    const next = Array.from(incoming).filter((file) => /\.(pdf|csv|xlsx|xls|txt)$/i.test(file.name));
     setFiles((current) => {
       const merged = [...current];
       for (const file of next) {
@@ -234,10 +234,10 @@ function UploadDialog() {
               >
                 <UploadCloud className="size-6" />
                 <div>
-                  <p className="text-sm font-medium text-white">Drag and drop PDF, CSV, or Excel files</p>
+                  <p className="text-sm font-medium text-white">Drag and drop PDF, CSV, Excel, or TXT files</p>
                   <p className="mt-1 text-xs text-slate-400">You can select and upload multiple files at the same time.</p>
                 </div>
-                <input type="file" accept=".pdf,.csv,.xlsx,.xls" multiple onChange={(event) => addFiles(event.target.files)} className="hidden" />
+                <input type="file" accept=".pdf,.csv,.xlsx,.xls,.txt" multiple onChange={(event) => addFiles(event.target.files)} className="hidden" />
               </label>
               {files.length ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">

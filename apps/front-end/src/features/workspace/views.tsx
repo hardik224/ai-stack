@@ -65,7 +65,7 @@ function SharedUploadDialog() {
 
   const mutation = useMutation({
     mutationFn: () => {
-      if (!files.length) throw new Error('At least one PDF, CSV, or Excel file is required.');
+      if (!files.length) throw new Error('At least one PDF, CSV, Excel, or TXT file is required.');
       return uploadFiles(token, files);
     },
     onSuccess: () => {
@@ -81,7 +81,7 @@ function SharedUploadDialog() {
 
   const addFiles = (incoming: FileList | File[] | null | undefined) => {
     if (!incoming) return;
-    const next = Array.from(incoming).filter((file) => /\.(pdf|csv|xlsx|xls)$/i.test(file.name));
+    const next = Array.from(incoming).filter((file) => /\.(pdf|csv|xlsx|xls|txt)$/i.test(file.name));
     setFiles((current) => {
       const merged = [...current];
       for (const file of next) {
@@ -122,10 +122,10 @@ function SharedUploadDialog() {
               >
                 <UploadCloud className="size-6" />
                 <div>
-                  <p className="text-sm font-medium text-white">Drag and drop PDF, CSV, or Excel files</p>
+                  <p className="text-sm font-medium text-white">Drag and drop PDF, CSV, Excel, or TXT files</p>
                   <p className="mt-1 text-xs text-slate-400">You can select and upload multiple files at the same time.</p>
                 </div>
-                <input type="file" accept=".pdf,.csv,.xlsx,.xls" multiple onChange={(event) => addFiles(event.target.files)} className="hidden" />
+                <input type="file" accept=".pdf,.csv,.xlsx,.xls,.txt" multiple onChange={(event) => addFiles(event.target.files)} className="hidden" />
               </label>
               {files.length ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -761,7 +761,7 @@ function WorkspaceDashboardView() {
                 ))}
               </div>
             ) : (
-              <EmptyState title="No uploads yet" description="Upload your first PDF, CSV, or Excel to start building the knowledge base behind the assistant." />
+              <EmptyState title="No uploads yet" description="Upload your first PDF, CSV, Excel, or TXT file to start building the knowledge base behind the assistant." />
             )}
           </Card>
 
@@ -858,7 +858,7 @@ function WorkspaceUploadsView() {
               <PaginationControls page={page} pageSize={PAGE_SIZE} itemCount={items.length} onPrevious={() => setPage((current) => Math.max(1, current - 1))} onNext={() => setPage((current) => current + 1)} />
             </>
           ) : (
-            <EmptyState title="No uploaded files matched the current search" description="Try a broader search or upload a new PDF, CSV, or Excel file to start ingestion." />
+            <EmptyState title="No uploaded files matched the current search" description="Try a broader search or upload a new PDF, CSV, Excel, or TXT file to start ingestion." />
           )}
         </div>
       </Card>

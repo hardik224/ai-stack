@@ -10,7 +10,7 @@ class ChatRequest(BaseModel):
     session_id: UUID | None = None
     collection_id: UUID | None = None
     file_id: UUID | None = None
-    source_type: Literal['pdf', 'csv', 'excel'] | None = None
+    source_type: Literal['pdf', 'csv', 'excel', 'txt'] | None = None
     top_k: int | None = Field(default=None, ge=1, le=20)
     score_threshold: float | None = Field(default=None, ge=0, le=1)
     dedupe: bool = True

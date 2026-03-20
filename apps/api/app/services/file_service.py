@@ -21,6 +21,7 @@ ALLOWED_UPLOAD_TYPES = {
     '.csv': {'content_type': 'text/csv', 'source_type': 'csv'},
     '.xlsx': {'content_type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'source_type': 'excel'},
     '.xls': {'content_type': 'application/vnd.ms-excel', 'source_type': 'excel'},
+    '.txt': {'content_type': 'text/plain', 'source_type': 'txt'},
 }
 
 
@@ -57,7 +58,7 @@ def upload_file_to_collection(*, collection_id: UUID | None, upload: UploadFile,
 
     original_name = sanitize_filename(upload.filename or 'upload')
     extension = Path(original_name).suffix.lower()
-    require_condition(extension in ALLOWED_UPLOAD_TYPES, 'Only PDF, CSV, and Excel uploads are supported.')
+    require_condition(extension in ALLOWED_UPLOAD_TYPES, 'Only PDF, CSV, Excel, and TXT uploads are supported.')
 
     content = upload.file.read()
     require_condition(bool(content), 'Uploaded file is empty.')
