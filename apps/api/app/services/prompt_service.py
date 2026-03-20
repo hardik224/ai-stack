@@ -61,49 +61,53 @@ MODE_GUIDANCE = {
 
 
 def build_answer_style_guidance(question: str, mode: str) -> str:
-    normalized = ' '.join((question or '').strip().lower().split())
-
     if mode == 'analysis':
         return (
             'Answer style:\n'
-            '- Start with a short executive answer.\n'
-            '- Then use compact sections or bullets for findings, implications, and risks when helpful.\n'
-            '- Prefer synthesis over quotation.\n'
+            '- Choose the structure based on what the evidence supports.\n'
+            '- Use a plain paragraph, bullets, numbered steps, short sections, or a compact comparison only when it genuinely improves clarity.\n'
+            '- Do not force fixed labels or repeated section patterns across every answer.\n'
+            '- Prefer clean synthesis over dumping notes or fragments.\n'
             '- Keep the tone smart, natural, and business-friendly.\n'
         )
 
-    if normalized.startswith(('what is ', 'what are ', 'define ', 'who is ', 'what does ')):
-        return (
-            'Answer style:\n'
-            '- Start with a short direct definition in 1 to 2 sentences.\n'
-            '- Then add "More specifically:" with concise bullet points if useful.\n'
-            '- If it helps clarity, end with "In simple terms:" and one plain-language sentence.\n'
-            '- Avoid sounding like search results or raw notes.\n'
-        )
-
-    if normalized.startswith(('how ', 'how do ', 'how does ', 'steps', 'process', 'workflow')):
-        return (
-            'Answer style:\n'
-            '- Start with the direct answer.\n'
-            '- Then present the flow as short numbered steps.\n'
-            '- Keep each step compact and easy to follow.\n'
-        )
-
-    if normalized.startswith(('compare ', 'difference ', 'differences ', 'vs ', 'versus ')):
-        return (
-            'Answer style:\n'
-            '- Start with the main difference or conclusion.\n'
-            '- Then use short comparison bullets.\n'
-            '- Keep the structure crisp and decision-friendly.\n'
-        )
-
     return (
-        'Answer style:\n'
-        '- Start with the direct answer.\n'
-        '- Then add only the supporting detail that improves clarity.\n'
-        '- Use bullets or short sections only when they genuinely help readability.\n'
-        '- Keep the tone natural, polished, and helpful.\n'
-    )
+    'Answer style:\n'
+    '- Choose the structure based on the actual answer, not on a fixed template.\n'
+    '- Use plain paragraphs for simple answers.\n'
+    '- Use bullets only when listing items helps.\n'
+    '- Use numbered steps only when the answer is truly sequential or procedural.\n'
+    '- Use short headings only when the answer naturally has distinct parts.\n'
+    '- Do not force labels like "More specifically" or "In simple terms" unless they truly fit the response.\n'
+    '- Keep the answer natural, polished, and easy to read.\n'
+    '\n'
+    'Additional style guidance:\n'
+    '- Write in a clear, human, conversational way.\n'
+    '- Prefer simple words over complicated wording.\n'
+    '- Make the response feel helpful and natural, not robotic or overly formal.\n'
+    '- Prioritize clarity, readability, and usefulness over sounding smart.\n'
+    '- Avoid unnecessary jargon; when technical terms are needed, explain them simply.\n'
+    '- Keep sentences reasonably short unless longer explanation genuinely helps.\n'
+    '- Avoid repetitive phrasing and avoid repeating the user’s question back unless useful.\n'
+    '- Do not over-explain when a concise answer is enough.\n'
+    '- When the topic is complex, break it into clean, digestible parts.\n'
+    '- Use examples only when they make the answer easier to understand.\n'
+    '- Make formatting feel intentional and clean, never cluttered.\n'
+    '- Keep transitions smooth so the response flows naturally.\n'
+    '- Sound confident but not arrogant.\n'
+    '- Be direct, but not blunt.\n'
+    '- Be friendly, but not overly casual.\n'
+    '- Do not use filler phrases that add no value.\n'
+    '- Do not use generic AI-sounding phrases like "As an AI language model".\n'
+    '- Do not sound like a textbook unless the user asks for a formal explanation.\n'
+    '- Match the depth of the answer to the user’s question: simple for simple questions, detailed for complex ones.\n'
+    '- If the user asks for practical help, give actionable guidance.\n'
+    '- If multiple good answers exist, present the most useful one first.\n'
+    '- When giving instructions, make them easy to follow.\n'
+    '- When rewriting or generating text, make it sound natural and fluent.\n'
+    '- Favor readability over perfect symmetry in formatting.\n'
+    '- End cleanly without unnecessary wrap-up lines.\n'
+)
 
 
 def build_chat_prompt(*, question: str, context_items: list[dict], history_messages: list[dict], mode: str) -> list[dict[str, str]]:
