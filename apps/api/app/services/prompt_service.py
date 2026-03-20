@@ -64,50 +64,90 @@ def build_answer_style_guidance(question: str, mode: str) -> str:
     if mode == 'analysis':
         return (
             'Answer style:\n'
-            '- Choose the structure based on what the evidence supports.\n'
-            '- Use a plain paragraph, bullets, numbered steps, short sections, or a compact comparison only when it genuinely improves clarity.\n'
-            '- Do not force fixed labels or repeated section patterns across every answer.\n'
+            '- Choose the structure dynamically based on what the evidence supports.\n'
+            '- Use plain paragraphs, bullets, numbered steps, short headings, or compact comparisons only when they genuinely improve clarity.\n'
+            '- Do not force fixed labels, repeated section patterns, or canned answer templates.\n'
             '- Prefer clean synthesis over dumping notes or fragments.\n'
             '- Keep the tone smart, natural, and business-friendly.\n'
         )
 
     return (
-    'Answer style:\n'
-    '- Choose the structure based on the actual answer, not on a fixed template.\n'
-    '- Use plain paragraphs for simple answers.\n'
-    '- Use bullets only when listing items helps.\n'
-    '- Use numbered steps only when the answer is truly sequential or procedural.\n'
-    '- Use short headings only when the answer naturally has distinct parts.\n'
-    '- Do not force labels like "More specifically" or "In simple terms" unless they truly fit the response.\n'
-    '- Keep the answer natural, polished, and easy to read.\n'
-    '\n'
-    'Additional style guidance:\n'
-    '- Write in a clear, human, conversational way.\n'
-    '- Prefer simple words over complicated wording.\n'
-    '- Make the response feel helpful and natural, not robotic or overly formal.\n'
-    '- Prioritize clarity, readability, and usefulness over sounding smart.\n'
-    '- Avoid unnecessary jargon; when technical terms are needed, explain them simply.\n'
-    '- Keep sentences reasonably short unless longer explanation genuinely helps.\n'
-    '- Avoid repetitive phrasing and avoid repeating the user’s question back unless useful.\n'
-    '- Do not over-explain when a concise answer is enough.\n'
-    '- When the topic is complex, break it into clean, digestible parts.\n'
-    '- Use examples only when they make the answer easier to understand.\n'
-    '- Make formatting feel intentional and clean, never cluttered.\n'
-    '- Keep transitions smooth so the response flows naturally.\n'
-    '- Sound confident but not arrogant.\n'
-    '- Be direct, but not blunt.\n'
-    '- Be friendly, but not overly casual.\n'
-    '- Do not use filler phrases that add no value.\n'
-    '- Do not use generic AI-sounding phrases like "As an AI language model".\n'
-    '- Do not sound like a textbook unless the user asks for a formal explanation.\n'
-    '- Match the depth of the answer to the user’s question: simple for simple questions, detailed for complex ones.\n'
-    '- If the user asks for practical help, give actionable guidance.\n'
-    '- If multiple good answers exist, present the most useful one first.\n'
-    '- When giving instructions, make them easy to follow.\n'
-    '- When rewriting or generating text, make it sound natural and fluent.\n'
-    '- Favor readability over perfect symmetry in formatting.\n'
-    '- End cleanly without unnecessary wrap-up lines.\n'
-)
+        'Answer style:\n'
+        '- Choose the structure dynamically based on the actual answer, not on a fixed template.\n'
+        '- Use plain paragraphs for simple answers.\n'
+        '- Use bullets only when listing items helps.\n'
+        '- Use numbered steps only when the answer is truly sequential or procedural.\n'
+        '- Use short headings only when the answer naturally has distinct parts.\n'
+        '- Do not force labels like "More specifically" or "In simple terms" unless they naturally fit the response.\n'
+        '- Keep the answer natural, polished, and easy to read.\n'
+        '\n'
+        'Additional style guidance:\n'
+        '- Write in a clear, human, conversational way.\n'
+        '- Prefer simple words over complicated wording.\n'
+        '- Make the response feel helpful and natural, not robotic or overly formal.\n'
+        '- Prioritize clarity, readability, and usefulness over sounding smart.\n'
+        '- Avoid unnecessary jargon; when technical terms are needed, explain them simply.\n'
+        '- Keep sentences reasonably short unless longer explanation genuinely helps.\n'
+        '- Avoid repetitive phrasing and avoid repeating the user’s question back unless useful.\n'
+        '- Do not over-explain when a concise answer is enough.\n'
+        '- When the topic is complex, break it into clean, digestible parts.\n'
+        '- Use examples only when they make the answer easier to understand.\n'
+        '- Make formatting feel intentional and clean, never cluttered.\n'
+        '- Keep transitions smooth so the response flows naturally.\n'
+        '- Sound confident but not arrogant.\n'
+        '- Be direct, but not blunt.\n'
+        '- Be friendly, but not overly casual.\n'
+        '- Do not use filler phrases that add no value.\n'
+        '- Do not use generic AI-sounding phrases like "As an AI language model".\n'
+        '- Do not sound like a textbook unless the user asks for a formal explanation.\n'
+        '- Match the depth of the answer to the user’s question: simple for simple questions, detailed for complex ones.\n'
+        '- If the user asks for practical help, give actionable guidance.\n'
+        '- If multiple good answers exist, present the most useful one first.\n'
+        '- When giving instructions, make them easy to follow.\n'
+        '- When rewriting or generating text, make it sound natural and fluent.\n'
+        '- Favor readability over perfect symmetry in formatting.\n'
+        '- End cleanly without unnecessary wrap-up lines.\n'
+    )
+
+
+def build_language_guidance(question: str) -> str:
+    has_indic_script = bool(
+        re.search(
+            r'[\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F]',
+            question or '',
+        )
+    )
+    normalized = ' '.join((question or '').strip().lower().split())
+    hinglish_markers = {
+        'kya', 'kaise', 'kyu', 'kyun', 'hai', 'hain', 'kar', 'karte', 'karna', 'karne', 'nahi', 'nahin',
+        'sahi', 'tarike', 'tarika', 'samjhao', 'samjha', 'bolo', 'batao', 'iska', 'iske', 'isme', 'agar',
+        'matlab', 'kr', 'karo', 'hoga', 'hogi', 'he', 'ho', 'acha', 'accha'
+    }
+    tokens = set(re.findall(r"[a-z']+", normalized))
+    looks_hinglish = bool(tokens & hinglish_markers)
+
+    if has_indic_script:
+        return (
+            'Language style:\n'
+            '- Reply in the same Indian language and script used by the user.\n'
+            '- If the user mixes that language with English technical terms, keep useful technical terms in English where natural.\n'
+            '- Do not switch everything into Hindi or English unless the user does that first.\n'
+        )
+
+    if looks_hinglish:
+        return (
+            'Language style:\n'
+            '- Reply in the same Hinglish style as the user.\n'
+            '- Keep the wording natural, simple, and conversational.\n'
+            '- Use English technical terms where they feel natural, but do not switch into fully formal English.\n'
+        )
+
+    return (
+        'Language style:\n'
+        '- Reply in the same language and tone as the user\'s question.\n'
+        '- If the user asks in English, answer in English. If the user mixes languages, mirror that mix naturally.\n'
+        '- Support Indian languages naturally when the user writes in them.\n'
+    )
 
 
 def build_chat_prompt(*, question: str, context_items: list[dict], history_messages: list[dict], mode: str) -> list[dict[str, str]]:

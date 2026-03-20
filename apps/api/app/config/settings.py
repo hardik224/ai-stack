@@ -24,6 +24,7 @@ class Settings:
     minio_secret_key: str
     minio_secure: bool
     minio_documents_bucket: str
+    public_api_base_url: str
     auth_session_ttl_hours: int
     ingestion_queue_name: str
     max_upload_size_bytes: int
@@ -89,6 +90,7 @@ def get_settings() -> Settings:
         minio_secret_key=os.getenv('MINIO_SECRET_KEY', os.getenv('MINIO_ROOT_PASSWORD', '')),
         minio_secure=_as_bool(os.getenv('MINIO_SECURE'), default=False),
         minio_documents_bucket=os.getenv('MINIO_DOCUMENTS_BUCKET', 'documents'),
+        public_api_base_url=os.getenv('PUBLIC_API_BASE_URL', '').rstrip('/'),
         auth_session_ttl_hours=int(os.getenv('AUTH_SESSION_TTL_HOURS', '168')),
         ingestion_queue_name=os.getenv('INGESTION_QUEUE_NAME', 'ai_stack:ingestion_jobs'),
         max_upload_size_bytes=int(os.getenv('MAX_UPLOAD_SIZE_BYTES', '52428800')),

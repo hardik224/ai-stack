@@ -6,6 +6,7 @@ from app.routes.file_routes import router as file_router
 from app.routes.health_routes import router as health_router
 from app.routes.search_routes import router as search_router
 from app.routes.user_routes import router as user_router
+from app.routes.utility_routes import router as utility_router
 
 
 
@@ -19,4 +20,5 @@ def get_routers():
         search_router,
         chat_router,
         admin_router,
+        utility_router,
     ]
