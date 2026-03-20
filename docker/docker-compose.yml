@@ -13,7 +13,7 @@ services:
       - "60"
       - "1000"
     volumes:
-      - /home/evital/ai-stack-2/data/redis:/data
+      - ../data/redis:/data
     networks:
       - ai-stack-network
     ports:
@@ -30,10 +30,10 @@ services:
     container_name: ai-stack-minio
     restart: unless-stopped
     env_file:
-      - /home/evital/ai-stack-2/docker/.env
+      - ./.env
     command: server /data --console-address ":9001"
     volumes:
-      - /home/evital/ai-stack-2/data/minio:/data
+      - ../data/minio:/data
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
@@ -53,18 +53,18 @@ services:
     ports:
       - "6333:6333"
     volumes:
-      - /home/evital/ai-stack-2/data/qdrant:/qdrant/storage
+      - ../data/qdrant:/qdrant/storage
     networks:
       - ai-stack-network
 
   api:
     build:
-      context: /home/evital/ai-stack-2/apps/api
+      context: ../apps/api
       dockerfile: Dockerfile
     container_name: ai-stack-api
     restart: unless-stopped
     env_file:
-      - /home/evital/ai-stack-2/docker/.env
+      - ./.env
     depends_on:
       - redis
       - qdrant
@@ -131,18 +131,18 @@ services:
     ports:
       - "2000:2000"
     volumes:
-      - /home/evital/ai-stack-2/logs/api:/logs
+      - ../logs/api:/logs
     networks:
       - ai-stack-network
 
   worker:
     build:
-      context: /home/evital/ai-stack-2/apps/worker
+      context: ../apps/worker
       dockerfile: Dockerfile
     container_name: ai-stack-worker
     restart: unless-stopped
     env_file:
-      - /home/evital/ai-stack-2/docker/.env
+      - ./.env
     depends_on:
       - redis
       - qdrant
@@ -171,13 +171,13 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - /home/evital/ai-stack-2/logs/worker:/logs
+      - ../logs/worker:/logs
     networks:
       - ai-stack-network
 
   web:
     build:
-      context: /home/evital/ai-stack-2/apps/web
+      context: ../apps/web
       dockerfile: Dockerfile
     container_name: ai-stack-web
     restart: unless-stopped
@@ -186,7 +186,7 @@ services:
     ports:
       - "2001:80"
     volumes:
-      - /home/evital/ai-stack-2/logs/web:/var/log/nginx
+      - ../logs/web:/var/log/nginx
     networks:
       - ai-stack-network
 
@@ -210,6 +210,30 @@ services:
     networks:
       - ai-stack-network
 
+  telegram-bot:
+    build:
+      context: ../apps/telegram-bot
+      dockerfile: Dockerfile
+    container_name: ai-stack-telegram-bot
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    depends_on:
+      - api
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_API_BASE_URL: ${TELEGRAM_API_BASE_URL:-http://api:2000}
+      TELEGRAM_API_KEY: ${TELEGRAM_API_KEY}
+      TELEGRAM_ALLOWED_CHAT_IDS: ${TELEGRAM_ALLOWED_CHAT_IDS:-}
+      TELEGRAM_HISTORY_LIMIT: ${TELEGRAM_HISTORY_LIMIT:-80}
+      TELEGRAM_MAX_HISTORY_CHARS: ${TELEGRAM_MAX_HISTORY_CHARS:-18000}
+      TELEGRAM_POLLING_TIMEOUT: ${TELEGRAM_POLLING_TIMEOUT:-30}
+    volumes:
+      - ../logs/telegram-bot:/app/logs
+    networks:
+      - ai-stack-network
+
 networks:
   ai-stack-network:
     external: true
+

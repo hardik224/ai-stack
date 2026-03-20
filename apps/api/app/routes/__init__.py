@@ -5,6 +5,7 @@ from app.routes.collection_routes import router as collection_router
 from app.routes.file_routes import router as file_router
 from app.routes.health_routes import router as health_router
 from app.routes.search_routes import router as search_router
+from app.routes.telegram_routes import router as telegram_router
 from app.routes.user_routes import router as user_router
 from app.routes.utility_routes import router as utility_router
 
@@ -19,6 +20,7 @@ def get_routers():
         file_router,
         search_router,
         chat_router,
+        telegram_router,
         admin_router,
         utility_router,
     ]
