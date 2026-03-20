@@ -31,6 +31,7 @@ MODE_GUIDANCE = {
             'If evidence is incomplete, add a short ## Uncertainty section.',
             'Prefer practical language for SOPs, product docs, internal manuals, and API references.',
             'Use source filenames as helpful context when they clarify which document a fact came from.',
+            'If the evidence contains useful YouTube links, mention them naturally when they help the user and treat them as part of the answer context.',
         ],
     },
     'analysis': {
@@ -54,6 +55,7 @@ MODE_GUIDANCE = {
             'Cite supported findings inline with [S#].',
             'Do not add a Sources heading in the body.',
             'Use source filenames and sheet/page/row hints when they help distinguish evidence from different uploaded files.',
+            'If the evidence contains useful YouTube links, mention them naturally when they support the analysis or next step.',
             'If data is incomplete for a full conclusion, explicitly state the gap in ## Uncertainty.',
         ],
     },
@@ -159,6 +161,7 @@ def build_chat_prompt(*, question: str, context_items: list[dict], history_messa
 
     instruction_lines = '\n'.join(f'- {line}' for line in guidance['instructions'])
     style_guidance = build_answer_style_guidance(question=question, mode=mode)
+    language_guidance = build_language_guidance(question=question)
     user_prompt = (
         f"Mode: {guidance['label']}\n\n"
         'Current question:\n'
@@ -170,6 +173,7 @@ def build_chat_prompt(*, question: str, context_items: list[dict], history_messa
         'Evidence:\n'
         f'{context_block}\n\n'
         f'{style_guidance}\n'
+        f'{language_guidance}\n'
         'Instructions:\n'
         f'{instruction_lines}\n'
     )

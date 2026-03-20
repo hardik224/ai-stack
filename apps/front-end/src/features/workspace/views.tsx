@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDownToLine, ArrowLeft, Bot, FileText, LogOut, MessageSquare, Plus, SendHorizontal, Sparkles, UploadCloud } from 'lucide-react';
+import { ArrowDownToLine, ArrowLeft, Bot, ExternalLink, FileText, LogOut, MessageSquare, PlayCircle, Plus, SendHorizontal, Sparkles, UploadCloud } from 'lucide-react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 
@@ -172,8 +172,67 @@ function normalizeAnswerContent(content: string, hideReferences = false) {
   return normalized;
 }
 
+function extractYouTubeVideoId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+
+  return null;
+}
+
+function extractYouTubePreviews(content: string) {
+  const urlMatches = content.match(/https?:\/\/[^\s)]+/g) ?? [];
+  const previews = new Map<string, { id: string; url: string }>();
+
+  for (const url of urlMatches) {
+    const id = extractYouTubeVideoId(url);
+    if (id && !previews.has(id)) {
+      previews.set(id, { id, url });
+    }
+  }
+
+  return Array.from(previews.values());
+}
+
+function YouTubePreviewCard({ url, videoId }: { url: string; videoId: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="group overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] transition hover:bg-white/[0.08]"
+    >
+      <div className="relative aspect-video overflow-hidden bg-black/40">
+        <img
+          src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
+          alt="YouTube preview"
+          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+        />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+          <span className="inline-flex size-14 items-center justify-center rounded-full bg-black/55 text-white shadow-lg">
+            <PlayCircle className="size-7" />
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-white">YouTube reference</p>
+          <p className="truncate text-xs text-slate-400">{url}</p>
+        </div>
+        <ExternalLink className="size-4 shrink-0 text-slate-400 transition group-hover:text-white" />
+      </div>
+    </a>
+  );
+}
+
 function MarkdownAnswer({ content, hideReferences = false }: { content: string; hideReferences?: boolean }) {
   const normalizedContent = normalizeAnswerContent(content, hideReferences);
+  const youtubePreviews = extractYouTubePreviews(normalizedContent);
 
   return (
     <div className="space-y-4 text-[15px] leading-8 text-slate-100">
@@ -189,10 +248,22 @@ function MarkdownAnswer({ content, hideReferences = false }: { content: string; 
           strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
           code: ({ children }) => <code className="rounded-lg bg-white/6 px-1.5 py-0.5 text-cyan-100">{children}</code>,
           blockquote: ({ children }) => <blockquote className="border-l-2 border-cyan-300/40 pl-4 italic text-slate-300">{children}</blockquote>,
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noreferrer" className="text-cyan-200 underline decoration-cyan-300/30 underline-offset-4 transition hover:text-cyan-100">
+              {children}
+            </a>
+          ),
         }}
       >
         {normalizedContent}
       </ReactMarkdown>
+      {youtubePreviews.length ? (
+        <div className="grid gap-3 pt-2 sm:grid-cols-2">
+          {youtubePreviews.map((preview) => (
+            <YouTubePreviewCard key={preview.id} url={preview.url} videoId={preview.id} />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
