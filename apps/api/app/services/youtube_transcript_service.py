@@ -59,7 +59,6 @@ def create_transcript_file(*, youtube_url: str, current_identity: dict, download
         'filename': filename,
         'line_count': len(transcript_entries),
         'content_type': content_type,
-        'transcript': transcript_entries,
         'download_url': download_url,
         'bucket': settings.minio_documents_bucket,
         'object_key': object_key,
