@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import httpx
 from telegram import Chat, Update
+from telegram.error import RetryAfter
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 
@@ -46,7 +47,7 @@ def get_settings() -> Settings:
         telegram_api_base_url=api_base_url,
         telegram_api_key=api_key,
         telegram_allowed_chat_ids=_parse_csv_ints(os.getenv('TELEGRAM_ALLOWED_CHAT_IDS', '')),
-        telegram_history_limit=int(os.getenv('TELEGRAM_HISTORY_LIMIT', '80')),
+        telegram_history_limit=int(os.getenv('TELEGRAM_HISTORY_LIMIT', '200')),
         telegram_max_history_chars=int(os.getenv('TELEGRAM_MAX_HISTORY_CHARS', '18000')),
         telegram_polling_timeout=int(os.getenv('TELEGRAM_POLLING_TIMEOUT', '30')),
     )
@@ -90,7 +91,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await message.reply_text(
         'AI Stack bot is ready.\n'
         'In private chat, just send a message.\n'
-        'In groups, mention me, reply to one of my messages, or use /summary, /analyze, or /ask.'
+        'In groups, mention me, reply to one of my messages, or use /summary, /analyze, or /ask.\n'
+        'You can also ask time-scoped prompts like "summarize today" or "analyze last 2 hours".'
     )
 
 
@@ -165,19 +167,21 @@ async def _respond_from_message(update: Update, context: ContextTypes.DEFAULT_TY
         )
     except httpx.HTTPStatusError as exc:
         detail = _extract_api_error(exc.response)
-        await message.reply_text(f'Bot backend error: {detail}')
+        await _safe_reply_text(message, f'Bot backend error: {detail}', context=context, is_error=True)
         return
     except Exception:
-        await message.reply_text('Bot backend is not reachable right now.')
+        await _safe_reply_text(message, 'Bot backend is not reachable right now.', context=context, is_error=True)
         return
 
     answer = (response.get('answer') or '').strip()
     if not answer:
-        await message.reply_text('I could not generate a reply for that yet.')
+        await _safe_reply_text(message, 'I could not generate a reply for that yet.', context=context, is_error=True)
         return
 
     for chunk in _chunk_text(answer, chunk_size=3500):
-        sent = await message.reply_text(chunk, disable_web_page_preview=True)
+        sent = await _safe_reply_text(message, chunk, context=context)
+        if sent is None:
+            return
         await _ingest_sent_message(update, context, sent)
 
 
@@ -298,6 +302,18 @@ def _extract_api_error(response: httpx.Response) -> str:
         return response.text or f'HTTP {response.status_code}'
     detail = payload.get('detail')
     return detail if isinstance(detail, str) else response.text or f'HTTP {response.status_code}'
+
+
+async def _safe_reply_text(message, text: str, *, context: ContextTypes.DEFAULT_TYPE, is_error: bool = False):
+    try:
+        return await message.reply_text(text, disable_web_page_preview=True)
+    except RetryAfter as exc:
+        print(f'Skipping Telegram send because of flood control. Retry after {exc.retry_after} seconds.')
+        return None
+    except Exception as exc:
+        prefix = 'error reply' if is_error else 'reply'
+        print(f'Failed to send Telegram {prefix}: {exc}')
+        return None
 
 
 async def main() -> None:

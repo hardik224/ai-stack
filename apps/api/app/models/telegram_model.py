@@ -90,6 +90,29 @@ ORDER BY created_at DESC
 LIMIT %s;
 """
 
+LIST_SCOPED_TELEGRAM_MESSAGES = """
+SELECT
+    id,
+    telegram_chat_id,
+    telegram_message_id,
+    telegram_user_id,
+    sender_name,
+    sender_username,
+    text_content,
+    message_type,
+    reply_to_message_id,
+    is_bot,
+    metadata,
+    created_at,
+    updated_at
+FROM telegram_messages
+WHERE telegram_chat_id = %s
+  AND (%s::timestamptz IS NULL OR created_at >= %s::timestamptz)
+  AND (%s::timestamptz IS NULL OR created_at <= %s::timestamptz)
+ORDER BY created_at DESC
+LIMIT %s;
+"""
+
 
 def upsert_chat(
     *,
@@ -146,5 +169,29 @@ def upsert_message(
 
 def list_recent_messages(*, telegram_chat_id: UUID, limit: int, conn=None) -> list[dict]:
     rows = fetch_all(LIST_RECENT_TELEGRAM_MESSAGES, (str(telegram_chat_id), limit), conn=conn)
+    rows.reverse()
+    return rows
+
+
+def list_scoped_messages(
+    *,
+    telegram_chat_id: UUID,
+    limit: int,
+    since=None,
+    until=None,
+    conn=None,
+) -> list[dict]:
+    rows = fetch_all(
+        LIST_SCOPED_TELEGRAM_MESSAGES,
+        (
+            str(telegram_chat_id),
+            since,
+            since,
+            until,
+            until,
+            limit,
+        ),
+        conn=conn,
+    )
     rows.reverse()
     return rows

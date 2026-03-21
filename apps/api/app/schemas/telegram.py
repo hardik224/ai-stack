@@ -27,5 +27,5 @@ class TelegramMessageIngestRequest(BaseModel):
 class TelegramRespondRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     mode: TelegramRespondMode = 'assistant'
-    history_limit: int = Field(default=60, ge=1, le=200)
+    history_limit: int = Field(default=120, ge=1, le=500)
     max_history_chars: int = Field(default=16000, ge=1000, le=50000)
