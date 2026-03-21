@@ -30,9 +30,10 @@ def create_transcript_file(*, youtube_url: str, current_identity: dict, download
 
     video_id = extract_video_id(youtube_url)
     transcript_entries = fetch_transcript(video_id)
-    content = build_transcript_text(video_id=video_id, youtube_url=youtube_url, entries=transcript_entries)
-    filename = f'youtube-transcript-{video_id}.txt'
-    object_key = f"utilities/youtube-transcripts/{datetime.now(tz=UTC).strftime('%Y/%m/%d')}/{video_id}-{int(time.time())}.txt"
+    content = build_transcript_json(entries=transcript_entries)
+    filename = f'youtube-transcript-{video_id}.json'
+    object_key = f"utilities/youtube-transcripts/{datetime.now(tz=UTC).strftime('%Y/%m/%d')}/{video_id}-{int(time.time())}.json"
+    content_type = 'application/json; charset=utf-8'
 
     settings = get_settings()
     ensure_bucket_exists(settings.minio_documents_bucket)
@@ -40,22 +41,25 @@ def create_transcript_file(*, youtube_url: str, current_identity: dict, download
         bucket_name=settings.minio_documents_bucket,
         object_key=object_key,
         content=content.encode('utf-8'),
-        content_type='text/plain; charset=utf-8',
+        content_type=content_type,
     )
 
     token = build_download_token(
         bucket_name=settings.minio_documents_bucket,
         object_key=object_key,
         filename=filename,
-        content_type='text/plain; charset=utf-8',
+        content_type=content_type,
     )
     separator = '&' if '?' in download_base_url else '?'
     download_url = f"{download_base_url}{separator}token={quote(token)}"
 
     return {
         'video_id': video_id,
+        'youtube_url': youtube_url,
         'filename': filename,
         'line_count': len(transcript_entries),
+        'content_type': content_type,
+        'transcript': transcript_entries,
         'download_url': download_url,
         'bucket': settings.minio_documents_bucket,
         'object_key': object_key,
@@ -111,6 +115,11 @@ def fetch_transcript(video_id: str) -> list[dict]:
     if not result:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Transcript is empty for this video.')
     return result
+
+
+def build_transcript_json(*, entries: list[dict]) -> str:
+    # Keep the transcript JSON shape unchanged while making the uploaded file readable.
+    return json.dumps(entries, ensure_ascii=False, indent=2)
 
 
 def build_transcript_text(*, video_id: str, youtube_url: str, entries: list[dict]) -> str:
