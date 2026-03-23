@@ -130,7 +130,16 @@ def format_timestamp_label(start: float | int | None, end: float | int | None) -
 
 
 def _item_score(item: dict[str, Any]) -> float:
-    return float(item.get('rerank_score') or item.get('fused_score') or item.get('vector_score') or item.get('score') or 0.0)
+    candidates = []
+    for key in ('rerank_score', 'fused_score', 'vector_score', 'keyword_score', 'score'):
+        value = item.get(key)
+        if value is None:
+            continue
+        try:
+            candidates.append(float(value))
+        except (TypeError, ValueError):
+            continue
+    return max(candidates) if candidates else 0.0
 
 
 
