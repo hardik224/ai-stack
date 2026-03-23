@@ -390,6 +390,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 'timings': retrieval['timings'],
                 'citations': citations,
                 'evidence_assessment': evidence_assessment,
+                'media_suggestions': retrieval.get('media_suggestions', []),
                 'cache': retrieval.get('cache', {}),
             },
             session_id=str(session_id),
@@ -612,6 +613,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
                     )
             generation_ms = round((time.perf_counter() - generation_start) * 1000, 2)
 
+        media_cards = retrieval.get('media_suggestions', []) if generation_mode == 'llm' else []
         final_content = ''.join(answer_parts).strip()
         total_ms = round((time.perf_counter() - total_start) * 1000, 2)
         timings = {
@@ -644,6 +646,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
             'timings': timings,
             'citations': answer_citations,
             'cache': cache_state,
+            'media_cards': media_cards,
         }
 
         final_status = 'failed' if generation_mode in {'insufficient_evidence', 'grounded_fallback'} else 'completed'
@@ -696,7 +699,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
 
         yield format_sse_event(
             'citations.completed',
-            {'citations': answer_citations},
+            {'citations': answer_citations, 'media_cards': media_cards},
             session_id=str(session_id),
             message_id=str(assistant_message_id),
         )
@@ -715,6 +718,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 'citation_count': len(answer_citations),
                 'timings': timings,
                 'generation_mode': generation_mode,
+                'media_cards': media_cards,
                 'cache': cache_state,
             },
             session_id=str(session_id),
@@ -774,6 +778,7 @@ def _serialize_citations(items: list[dict]) -> list[dict]:
                 'page_number': item.get('page_number'),
                 'row_number': item.get('row_number'),
                 'source_type': item.get('source_type'),
+                'metadata': item.get('source_metadata') or {},
                 'score': item.get('score'),
                 'rank': item.get('rank'),
             }

@@ -32,6 +32,9 @@ class Settings:
     indexing_batch_size: int
     chunk_size_chars: int
     chunk_overlap_chars: int
+    json_generic_summary_max_chars: int
+    youtube_window_size: int
+    youtube_window_overlap: int
 
 
 @lru_cache(maxsize=1)
@@ -57,4 +60,7 @@ def get_settings() -> Settings:
         indexing_batch_size=int(os.getenv('INDEXING_BATCH_SIZE', '64')),
         chunk_size_chars=int(os.getenv('CHUNK_SIZE_CHARS', '1200')),
         chunk_overlap_chars=int(os.getenv('CHUNK_OVERLAP_CHARS', '150')),
+        json_generic_summary_max_chars=int(os.getenv('JSON_GENERIC_SUMMARY_MAX_CHARS', '1600')),
+        youtube_window_size=int(os.getenv('YOUTUBE_WINDOW_SIZE', '3')),
+        youtube_window_overlap=int(os.getenv('YOUTUBE_WINDOW_OVERLAP', '1')),
     )

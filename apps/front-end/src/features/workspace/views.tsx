@@ -9,7 +9,7 @@ import ReactMarkdown from 'react-markdown';
 import { useAuth } from '@/components/auth-provider';
 import { Card, EmptyState, ErrorState, MetricCard, SearchInput, SectionHeading, SkeletonCard, StatusBadge, TableShell, formatBytes, formatDateTime, formatNumber } from '@/components/ui';
 import { downloadFile, fetchChatSessionDetail, fetchChatSessions, fetchFiles, fetchWorkspaceSummary, streamChat, uploadFiles } from '@/features/admin/data';
-import type { ChatMessage, ChatMode, ChatSource, StreamChatEvent, UploadItem } from '@/features/admin/types';
+import type { ChatMediaCard, ChatMessage, ChatMode, ChatSource, StreamChatEvent, UploadItem } from '@/features/admin/types';
 import { cn } from '@/lib/utils';
 
 const PAGE_SIZE = 20;
@@ -65,7 +65,7 @@ function SharedUploadDialog() {
 
   const mutation = useMutation({
     mutationFn: () => {
-      if (!files.length) throw new Error('At least one PDF, CSV, Excel, or TXT file is required.');
+      if (!files.length) throw new Error('At least one PDF, CSV, Excel, TXT, or JSON file is required.');
       return uploadFiles(token, files);
     },
     onSuccess: () => {
@@ -81,7 +81,7 @@ function SharedUploadDialog() {
 
   const addFiles = (incoming: FileList | File[] | null | undefined) => {
     if (!incoming) return;
-    const next = Array.from(incoming).filter((file) => /\.(pdf|csv|xlsx|xls|txt)$/i.test(file.name));
+    const next = Array.from(incoming).filter((file) => /\.(pdf|csv|xlsx|xls|txt|json)$/i.test(file.name));
     setFiles((current) => {
       const merged = [...current];
       for (const file of next) {
@@ -99,7 +99,7 @@ function SharedUploadDialog() {
       {open ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-md">
           <Card className="w-full max-w-2xl p-6">
-            <SectionHeading eyebrow="New upload" title="Add source files" description="Upload one or more PDFs, CSVs, or Excel files and the system will place them into the right managed knowledge space automatically." />
+            <SectionHeading eyebrow="New upload" title="Add source files" description="Upload one or more PDFs, CSVs, Excel files, TXT files, or JSON files and the system will place them into the right managed knowledge space automatically." />
             <div className="mt-6 grid gap-4">
               <div className="rounded-2xl border border-cyan-300/10 bg-cyan-400/5 px-4 py-4 text-sm leading-6 text-slate-300">
                 Drag and drop files here or browse from your device. The platform routes them automatically and starts ingestion in the background.
@@ -122,10 +122,10 @@ function SharedUploadDialog() {
               >
                 <UploadCloud className="size-6" />
                 <div>
-                  <p className="text-sm font-medium text-white">Drag and drop PDF, CSV, Excel, or TXT files</p>
+                  <p className="text-sm font-medium text-white">Drag and drop PDF, CSV, Excel, TXT, or JSON files</p>
                   <p className="mt-1 text-xs text-slate-400">You can select and upload multiple files at the same time.</p>
                 </div>
-                <input type="file" accept=".pdf,.csv,.xlsx,.xls,.txt" multiple onChange={(event) => addFiles(event.target.files)} className="hidden" />
+                <input type="file" accept=".pdf,.csv,.xlsx,.xls,.txt,.json" multiple onChange={(event) => addFiles(event.target.files)} className="hidden" />
               </label>
               {files.length ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -230,6 +230,51 @@ function YouTubePreviewCard({ url, videoId }: { url: string; videoId: string }) 
   );
 }
 
+
+function getMessageMediaCards(message: LocalChatMessage): ChatMediaCard[] {
+  const raw = (message.metadata as { media_cards?: unknown } | undefined)?.media_cards;
+  return Array.isArray(raw) ? (raw as ChatMediaCard[]) : [];
+}
+
+function YouTubeSuggestionCard({ card }: { card: ChatMediaCard }) {
+  const href = card.type === 'youtube_segment' ? card.deep_link_url : card.url;
+  const badge = card.type === 'youtube_segment' ? (card.timestamp_label || 'Segment') : 'Video';
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="group overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] transition hover:bg-white/[0.08]"
+    >
+      <div className="relative aspect-video overflow-hidden bg-black/40">
+        <img
+          src={card.thumbnail_url || `https://i.ytimg.com/vi/${card.video_id}/hqdefault.jpg`}
+          alt={card.title}
+          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+        />
+        <div className="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-1 text-[11px] font-medium text-white">{badge}</div>
+        <div className="absolute inset-0 flex items-center justify-center bg-black/15">
+          <span className="inline-flex size-14 items-center justify-center rounded-full bg-black/55 text-white shadow-lg">
+            <PlayCircle className="size-7" />
+          </span>
+        </div>
+      </div>
+      <div className="space-y-2 px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="line-clamp-2 text-sm font-semibold text-white">{card.title}</p>
+            {card.type === 'youtube_segment' && card.timestamp_label ? <p className="mt-1 text-xs text-cyan-200">{card.timestamp_label}</p> : null}
+          </div>
+          <ExternalLink className="mt-0.5 size-4 shrink-0 text-slate-400 transition group-hover:text-white" />
+        </div>
+        {card.subtitle ? <p className="line-clamp-3 text-xs leading-6 text-slate-300">{card.subtitle}</p> : null}
+        {card.reason ? <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">{card.reason}</p> : null}
+      </div>
+    </a>
+  );
+}
+
 function MarkdownAnswer({ content, hideReferences = false }: { content: string; hideReferences?: boolean }) {
   const normalizedContent = normalizeAnswerContent(content, hideReferences);
   const youtubePreviews = extractYouTubePreviews(normalizedContent);
@@ -275,6 +320,7 @@ function MessageBubble({ message, viewerRole, onDownloadSource }: { message: Loc
   const normalizedError = (message.error_message || '').trim();
   const suppressAssistantContent = !isUser && message.status === 'failed' && normalizedContent && (normalizedContent === normalizedError || normalizedContent === 'Something went wrong while generating the answer. Please contact the administrator.');
   const citedLabels = new Set(Array.from((message.content || '').matchAll(/\[(S\d+)\]/g)).map((match) => match[1]));
+  const mediaCards = !isUser ? getMessageMediaCards(message) : [];
   const visibleSources = !isUser && canShowSources && message.sources?.length
     ? Array.from(
         message.sources
@@ -314,6 +360,14 @@ function MessageBubble({ message, viewerRole, onDownloadSource }: { message: Loc
         ) : suppressAssistantContent ? null : (
           <MarkdownAnswer content={message.content || '...'} />
         )}
+
+        {!isUser && mediaCards.length ? (
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {mediaCards.map((card, index) => (
+              <YouTubeSuggestionCard key={`${message.id}-media-${card.video_id}-${index}`} card={card} />
+            ))}
+          </div>
+        ) : null}
 
         {!isUser && visibleSources.length ? (
           <div className="mt-6 border-t border-white/8 pt-4">
@@ -541,7 +595,8 @@ function AssistantView() {
               }
               case 'citations.completed': {
                 const citations = Array.isArray(event.data?.citations) ? (event.data?.citations as ChatSource[]) : [];
-                setMessages((current) => current.map((message) => (message.id === assistantMessageIdRef.current ? { ...message, sources: citations, citation_count: citations.length } : message)));
+                const mediaCards = Array.isArray(event.data?.media_cards) ? (event.data?.media_cards as ChatMediaCard[]) : [];
+                setMessages((current) => current.map((message) => (message.id === assistantMessageIdRef.current ? { ...message, sources: citations, citation_count: citations.length, metadata: { ...(message.metadata || {}), media_cards: mediaCards } } : message)));
                 break;
               }
               case 'message.saved':
@@ -552,7 +607,7 @@ function AssistantView() {
                 flushStreamQueue(true);
                 setStreamStatus('Answer ready');
                 assistantMessageIdRef.current = event.message_id || assistantMessageIdRef.current;
-                setMessages((current) => current.map((message) => (message.id === assistantMessageId || message.id === event.message_id || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false, sources: message.sources ?? [], citation_count: message.citation_count ?? 0 } : message)));
+                setMessages((current) => current.map((message) => (message.id === assistantMessageId || message.id === event.message_id || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false, sources: message.sources ?? [], citation_count: message.citation_count ?? 0, metadata: { ...(message.metadata || {}), media_cards: Array.isArray(event.data?.media_cards) ? (event.data?.media_cards as ChatMediaCard[]) : getMessageMediaCards(message) } } : message)));
                 break;
               case 'error': {
                 const detail = typeof event.data?.detail === 'string' ? event.data.detail : 'The chat request failed.';
@@ -832,7 +887,7 @@ function WorkspaceDashboardView() {
                 ))}
               </div>
             ) : (
-              <EmptyState title="No uploads yet" description="Upload your first PDF, CSV, Excel, or TXT file to start building the knowledge base behind the assistant." />
+              <EmptyState title="No uploads yet" description="Upload your first PDF, CSV, Excel, TXT, or JSON file to start building the knowledge base behind the assistant." />
             )}
           </Card>
 
@@ -929,7 +984,7 @@ function WorkspaceUploadsView() {
               <PaginationControls page={page} pageSize={PAGE_SIZE} itemCount={items.length} onPrevious={() => setPage((current) => Math.max(1, current - 1))} onNext={() => setPage((current) => current + 1)} />
             </>
           ) : (
-            <EmptyState title="No uploaded files matched the current search" description="Try a broader search or upload a new PDF, CSV, Excel, or TXT file to start ingestion." />
+            <EmptyState title="No uploaded files matched the current search" description="Try a broader search or upload a new PDF, CSV, Excel, TXT, or JSON file to start ingestion." />
           )}
         </div>
       </Card>

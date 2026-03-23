@@ -204,6 +204,11 @@ def build_conversation_context(history_messages: list[dict[str, Any]]) -> str:
 def format_context_block(context_items: list[dict[str, Any]]) -> str:
     blocks = []
     for item in context_items:
+        source_metadata = item.get('source_metadata') or {}
+        if item.get('source_type') == 'json' and source_metadata.get('knowledge_type') == 'youtube_transcript':
+            blocks.append(_format_youtube_context_block(item, source_metadata))
+            continue
+
         location = []
         if item.get('page_number'):
             location.append(f"page {item['page_number']}")
@@ -223,6 +228,7 @@ def build_evidence_overview(context_items: list[dict[str, Any]]) -> str:
 
     file_map: dict[str, dict[str, Any]] = {}
     for item in context_items:
+        source_metadata = item.get('source_metadata') or {}
         key = str(item.get('file_id') or item.get('filename'))
         source_entry = file_map.setdefault(
             key,
@@ -230,14 +236,24 @@ def build_evidence_overview(context_items: list[dict[str, Any]]) -> str:
                 'filename': item.get('filename') or 'Unknown file',
                 'source_type': item.get('source_type') or 'document',
                 'labels': [],
+                'document_title': source_metadata.get('document_title'),
+                'segment_labels': [],
             },
         )
         source_entry['labels'].append(item['citation_label'])
+        if source_metadata.get('segment_label'):
+            source_entry['segment_labels'].append(source_metadata['segment_label'])
 
     lines = []
     for source in file_map.values():
         labels = ', '.join(dict.fromkeys(source['labels']))
-        lines.append(f"- {source['filename']} ({source['source_type']}): evidence labels {labels}")
+        descriptor = source['filename']
+        if source.get('document_title') and source['document_title'] != source['filename']:
+            descriptor = f"{source['document_title']} ({source['filename']})"
+        segment_hint = ''
+        if source['segment_labels']:
+            segment_hint = f" | relevant segments: {', '.join(list(dict.fromkeys(source['segment_labels']))[:2])}"
+        lines.append(f"- {descriptor} ({source['source_type']}): evidence labels {labels}{segment_hint}")
     return '\n'.join(lines)
 
 
@@ -261,3 +277,14 @@ def suggest_session_title(message: str) -> str:
         return 'New Chat'
     title = ' '.join(words)
     return title[:80].title()
+
+
+def _format_youtube_context_block(item: dict[str, Any], source_metadata: dict[str, Any]) -> str:
+    title = source_metadata.get('title') or source_metadata.get('document_title') or item.get('filename') or 'Video source'
+    segment_label = source_metadata.get('segment_label') or source_metadata.get('timestamp_label') or 'timestamp unavailable'
+    deep_link = source_metadata.get('deep_link_url') or source_metadata.get('url') or ''
+    excerpt = source_metadata.get('clean_text') or source_metadata.get('snippet') or item.get('text') or ''
+    return (
+        f"[{item['citation_label']}] source file: {item['filename']} | video title: {title} | relevant segment: {segment_label} | link: {deep_link}\n"
+        f"Transcript excerpt:\n{excerpt}"
+    )

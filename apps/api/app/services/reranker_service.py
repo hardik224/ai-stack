@@ -44,6 +44,16 @@ def rerank_candidates(*, query: str, candidates: list[dict], filters: dict[str, 
         if filters.get('collection_id') and item.get('collection_id') == filters['collection_id']:
             metadata_boost += 0.02
         source_blend_boost = 0.03 if len(item.get('retrieval_sources', [])) > 1 else 0.0
+        source_metadata = item.get('source_metadata') or {}
+        chunk_type = source_metadata.get('chunk_type')
+        query_prefers_broad = _prefers_broad_context(query_lower)
+        youtube_chunk_boost = 0.0
+        if chunk_type == 'youtube_segment' and not query_prefers_broad:
+            youtube_chunk_boost = 0.05
+        elif chunk_type == 'youtube_window' and query_prefers_broad:
+            youtube_chunk_boost = 0.05
+        elif chunk_type == 'youtube_video' and query_prefers_broad:
+            youtube_chunk_boost = 0.02
         rerank_score = (
             float(item.get('fused_score', 0.0)) * 0.42
             + float(item.get('vector_score', item.get('score', 0.0))) * 0.20
@@ -54,6 +64,7 @@ def rerank_candidates(*, query: str, candidates: list[dict], filters: dict[str, 
             + identifier_boost
             + metadata_boost
             + source_blend_boost
+            + youtube_chunk_boost
         )
         enriched = dict(item)
         enriched['lexical_overlap'] = round(lexical_overlap, 6)
@@ -85,3 +96,8 @@ def lexical_score(query_tokens: set[str], content_tokens: set[str]) -> float:
         return 0.0
     overlap = len(query_tokens.intersection(content_tokens))
     return overlap / max(len(query_tokens), 1)
+
+
+def _prefers_broad_context(query: str) -> bool:
+    cues = ('summary', 'summarize', 'overview', 'workflow', 'process', 'explain', 'why', 'compare', 'analysis', 'steps')
+    return any(cue in query for cue in cues)

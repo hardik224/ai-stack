@@ -47,6 +47,8 @@ def ensure_chunks_collection() -> None:
         ('source_type', models.PayloadSchemaType.KEYWORD),
         ('page_number', models.PayloadSchemaType.INTEGER),
         ('row_number', models.PayloadSchemaType.INTEGER),
+        ('chunk_type', models.PayloadSchemaType.KEYWORD),
+        ('video_id', models.PayloadSchemaType.KEYWORD),
     ):
         try:
             client.create_payload_index(

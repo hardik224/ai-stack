@@ -201,6 +201,7 @@ class JobTracker:
         row_count: int | None = None,
         source_type: str | None = None,
         emit_event: bool = True,
+        file_metadata: dict | None = None,
         completed_at: datetime | None = None,
         failed_at: datetime | None = None,
         error_message: str | None = None,
@@ -314,6 +315,7 @@ class JobTracker:
                             'last_job_progress': progress_percent,
                             'processed_chunks': processed_chunks,
                             'indexed_chunks': indexed_chunks,
+                            **(file_metadata or {}),
                         }
                     ),
                     str(self.job['file_id']),

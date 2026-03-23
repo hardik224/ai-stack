@@ -54,6 +54,8 @@ def retrieve_keyword_candidates(
                 'page_number': row.get('page_number'),
                 'row_number': row.get('row_number'),
                 'source_type': row.get('source_type'),
+                'source_metadata': row.get('source_metadata') or {},
+                'document_title': (row.get('source_metadata') or {}).get('document_title'),
                 'text': text,
                 'token_count': row.get('token_count'),
                 'content_hash': row.get('content_hash'),

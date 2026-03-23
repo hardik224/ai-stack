@@ -1,0 +1,29 @@
+﻿{
+  "title": "Store Operations Knowledge",
+  "version": 3,
+  "sections": [
+    {
+      "id": "cash-management",
+      "heading": "Cash Management",
+      "summary": "Cash management covers recording cash receipts, reconciling drawers, and preparing safe deposits at the end of each day.",
+      "steps": [
+        "Count the cash drawer at opening and closing.",
+        "Record cash receipts against the correct shift and invoice.",
+        "Reconcile any variance before closing the day."
+      ],
+      "owner": {
+        "name": "Operations Team",
+        "role": "internal"
+      }
+    },
+    {
+      "id": "new-item",
+      "heading": "Adding New Item",
+      "summary": "Always search the catalogue first. If the item is not available, add it through the app or purchase flow with barcode, photos, GST, HSN, and shelf-life details.",
+      "tags": ["catalogue", "purchase", "inventory"]
+    }
+  ],
+  "links": {
+    "learn_more": "https://example.com/ops/knowledge"
+  }
+}

@@ -381,7 +381,7 @@ export interface StreamChatRequest {
   session_id?: string | null;
   collection_id?: string | null;
   file_id?: string | null;
-  source_type?: 'pdf' | 'csv' | 'excel' | 'txt' | null;
+  source_type?: 'pdf' | 'csv' | 'excel' | 'txt' | 'json' | null;
   top_k?: number | null;
   score_threshold?: number | null;
   dedupe?: boolean;
@@ -397,6 +397,35 @@ export interface StreamChatEvent {
   message_id?: string;
 }
 
+
+
+export interface YoutubeVideoCard {
+  type: 'youtube_video';
+  video_id: string;
+  title: string;
+  url: string;
+  thumbnail_url?: string | null;
+  subtitle?: string | null;
+  reason?: string | null;
+  transcript_language?: string | null;
+}
+
+export interface YoutubeSegmentCard {
+  type: 'youtube_segment';
+  video_id: string;
+  title: string;
+  url: string;
+  deep_link_url: string;
+  thumbnail_url?: string | null;
+  start?: number | null;
+  end?: number | null;
+  timestamp_label?: string | null;
+  subtitle?: string | null;
+  reason?: string | null;
+  transcript_language?: string | null;
+}
+
+export type ChatMediaCard = YoutubeVideoCard | YoutubeSegmentCard;
 
 export interface ErrorConsoleItem {
   timestamp: string;

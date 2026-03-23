@@ -1,0 +1,36 @@
+﻿{
+  "video_id": "Mu-NckS2CfU",
+  "title": "Expiry Returns for ProCure - Hindi",
+  "url": "https://www.youtube.com/watch?v=Mu-NckS2CfU",
+  "transcript_language": "hi",
+  "translated_to_english": true,
+  "source": "youtube_transcript_api+google_translate",
+  "paragraphs": [
+    {
+      "start": 0.24,
+      "end": 18.5,
+      "text": "This video explains expiry returns in ProCure and when pharmacy staff should start the return process."
+    },
+    {
+      "start": 18.5,
+      "end": 42.0,
+      "text": "Before submitting an expiry return, first verify the invoice, batch number, expiry date, and distributor details so the wrong stock is not returned."
+    },
+    {
+      "start": 42.0,
+      "end": 77.0,
+      "text": "In ProCure, open the expiry returns section, select the distributor, add the expired items, confirm quantity and batch details, and then submit the return request."
+    },
+    {
+      "start": 77.0,
+      "end": 104.0,
+      "text": "After submission, keep the acknowledgement and track the credit note or replacement status inside the workflow."
+    },
+    {
+      "start": 104.0,
+      "end": 131.0,
+      "text": "If stock was already adjusted earlier, do not create a duplicate expiry return entry because it can cause reconciliation issues."
+    }
+  ],
+  "full_text_for_llm": "This video explains how expiry returns should be processed in ProCure. Staff should first verify invoice, batch number, expiry date, and distributor details. Then they should open the expiry returns section, select the distributor, add expired items, confirm quantity and batch details, and submit the return request. After submission they should keep acknowledgement details and track the credit note or replacement status. Duplicate return entries should be avoided if stock was already adjusted."
+}

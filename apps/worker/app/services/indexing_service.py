@@ -27,6 +27,12 @@ def upsert_chunk_vectors(*, file_id: UUID, collection_id: UUID, file_name: str, 
                     'page_number': chunk['page_number'],
                     'row_number': chunk['row_number'],
                     'content_hash': chunk['content_hash'],
+                    'chunk_type': (chunk.get('source_metadata') or {}).get('chunk_type'),
+                    'video_id': (chunk.get('source_metadata') or {}).get('video_id'),
+                    'document_title': (chunk.get('source_metadata') or {}).get('document_title'),
+                    'segment_start': (chunk.get('source_metadata') or {}).get('start'),
+                    'segment_end': (chunk.get('source_metadata') or {}).get('end'),
+                    'deep_link_url': (chunk.get('source_metadata') or {}).get('deep_link_url'),
                 },
             )
             for chunk in batch

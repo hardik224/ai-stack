@@ -1,4 +1,5 @@
 import hashlib
+import json
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote
@@ -22,6 +23,7 @@ ALLOWED_UPLOAD_TYPES = {
     '.xlsx': {'content_type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'source_type': 'excel'},
     '.xls': {'content_type': 'application/vnd.ms-excel', 'source_type': 'excel'},
     '.txt': {'content_type': 'text/plain', 'source_type': 'txt'},
+    '.json': {'content_type': 'application/json', 'source_type': 'json'},
 }
 
 
@@ -58,7 +60,7 @@ def upload_file_to_collection(*, collection_id: UUID | None, upload: UploadFile,
 
     original_name = sanitize_filename(upload.filename or 'upload')
     extension = Path(original_name).suffix.lower()
-    require_condition(extension in ALLOWED_UPLOAD_TYPES, 'Only PDF, CSV, Excel, and TXT uploads are supported.')
+    require_condition(extension in ALLOWED_UPLOAD_TYPES, 'Only PDF, CSV, Excel, TXT, and JSON uploads are supported.')
 
     content = upload.file.read()
     require_condition(bool(content), 'Uploaded file is empty.')
@@ -66,6 +68,14 @@ def upload_file_to_collection(*, collection_id: UUID | None, upload: UploadFile,
         len(content) <= settings.max_upload_size_bytes,
         f'File exceeds the maximum size of {settings.max_upload_size_bytes} bytes.',
     )
+
+    if extension == '.json':
+        try:
+            json.loads(content.decode('utf-8-sig', errors='strict'))
+        except UnicodeDecodeError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='JSON uploads must be valid UTF-8 text.') from exc
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'Invalid JSON file: {exc.msg} at line {exc.lineno}, column {exc.colno}.') from exc
 
     upload_type = ALLOWED_UPLOAD_TYPES[extension]
     content_type = upload.content_type or upload_type['content_type']

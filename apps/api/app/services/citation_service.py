@@ -23,6 +23,7 @@ def persist_sources(*, message_id: UUID, citations: list[dict]) -> None:
                     'row_number': citation.get('row_number'),
                     'chunk_index': citation.get('chunk_index'),
                     'source_type': citation.get('source_type'),
+                    'source_metadata': citation.get('source_metadata') or {},
                 },
                 conn=conn,
             )

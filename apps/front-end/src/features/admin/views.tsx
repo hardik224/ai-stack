@@ -176,7 +176,7 @@ function UploadDialog() {
 
   const mutation = useMutation({
     mutationFn: () => {
-      if (!files.length) throw new Error('At least one PDF, CSV, Excel, or TXT file is required.');
+      if (!files.length) throw new Error('At least one PDF, CSV, Excel, TXT, or JSON file is required.');
       return uploadFiles(token, files);
     },
     onSuccess: () => {
@@ -193,7 +193,7 @@ function UploadDialog() {
 
   const addFiles = (incoming: FileList | File[] | null | undefined) => {
     if (!incoming) return;
-    const next = Array.from(incoming).filter((file) => /\.(pdf|csv|xlsx|xls|txt)$/i.test(file.name));
+    const next = Array.from(incoming).filter((file) => /\.(pdf|csv|xlsx|xls|txt|json)$/i.test(file.name));
     setFiles((current) => {
       const merged = [...current];
       for (const file of next) {
@@ -211,7 +211,7 @@ function UploadDialog() {
       {open ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-md">
           <Card className="w-full max-w-2xl p-6">
-            <SectionHeading eyebrow="New upload" title="Add source files" description="Upload one or more PDFs, CSVs, or Excel files and the system will place them into the right managed knowledge space automatically. You do not need to choose a collection." />
+            <SectionHeading eyebrow="New upload" title="Add source files" description="Upload one or more PDFs, CSVs, Excel files, TXT files, or JSON files and the system will place them into the right managed knowledge space automatically. You do not need to choose a collection." />
             <div className="mt-6 grid gap-4">
               <div className="rounded-2xl border border-cyan-300/10 bg-cyan-400/5 px-4 py-4 text-sm leading-6 text-slate-300">
                 Files are routed into a system-managed upload collection automatically, so the ingestion pipeline can stay organized without asking the uploader to understand collections first.
@@ -234,10 +234,10 @@ function UploadDialog() {
               >
                 <UploadCloud className="size-6" />
                 <div>
-                  <p className="text-sm font-medium text-white">Drag and drop PDF, CSV, Excel, or TXT files</p>
+                  <p className="text-sm font-medium text-white">Drag and drop PDF, CSV, Excel, TXT, or JSON files</p>
                   <p className="mt-1 text-xs text-slate-400">You can select and upload multiple files at the same time.</p>
                 </div>
-                <input type="file" accept=".pdf,.csv,.xlsx,.xls,.txt" multiple onChange={(event) => addFiles(event.target.files)} className="hidden" />
+                <input type="file" accept=".pdf,.csv,.xlsx,.xls,.txt,.json" multiple onChange={(event) => addFiles(event.target.files)} className="hidden" />
               </label>
               {files.length ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">

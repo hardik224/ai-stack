@@ -12,7 +12,7 @@ from app.library import cache
 from app.library.embeddings import embed_query
 from app.library.qdrant import get_qdrant_client
 from app.models import chat_model, collection_model, retrieval_model
-from app.services import fusion_service, keyword_service, reranker_service
+from app.services import fusion_service, keyword_service, media_card_service, reranker_service
 
 
 WORD_RE = re.compile(r'[a-z0-9]+')
@@ -227,6 +227,7 @@ def retrieve_chunks(
     context_items = assign_citation_labels(context_items)
     timings['context_assembly_ms'] = round((time.perf_counter() - context_start) * 1000, 2)
     evidence_assessment = assess_evidence(context_items)
+    media_suggestions = media_card_service.choose_media_suggestions(context_items, question=expanded_query)
 
     result = {
         'query': query,
@@ -249,6 +250,7 @@ def retrieve_chunks(
         'cache_version_scope': version_scope,
         'retrieval_signature': cache.build_hash(retrieval_signature),
         'evidence_assessment': evidence_assessment,
+        'media_suggestions': media_suggestions,
         'paths': {
             'vector_enabled': enable_vector,
             'keyword_enabled': enable_keyword,
@@ -394,6 +396,8 @@ def build_vector_candidates(*, expanded_query: str, qdrant_points: list, rows_by
                 'page_number': row.get('page_number'),
                 'row_number': row.get('row_number'),
                 'source_type': row.get('source_type'),
+                'source_metadata': row.get('source_metadata') or {},
+                'document_title': (row.get('source_metadata') or {}).get('document_title'),
                 'score': round(float(point.score), 6),
                 'vector_score': round(float(point.score), 6),
                 'keyword_score': 0.0,
@@ -424,11 +428,16 @@ def dedupe_hits(items: list[dict], *, enabled: bool) -> tuple[list[dict], int]:
         if content_hash and content_hash in seen_hashes:
             removed += 1
             continue
+        metadata = item.get('source_metadata') or {}
         location_key = (
             item['file_id'],
             item.get('source_type') or 'unknown',
             item.get('page_number'),
             item.get('row_number'),
+            metadata.get('chunk_type'),
+            metadata.get('start'),
+            metadata.get('end'),
+            metadata.get('json_path'),
         )
         if location_key in seen_locations:
             removed += 1

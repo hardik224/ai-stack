@@ -67,6 +67,9 @@ class Settings:
     rerank_enabled: bool
     rerank_provider: str
     rerank_max_candidates: int
+    media_cards_enabled: bool
+    youtube_card_min_score: float
+    youtube_segment_max_span_seconds: int
     sse_heartbeat_seconds: int
 
 
@@ -133,5 +136,8 @@ def get_settings() -> Settings:
         rerank_enabled=_as_bool(os.getenv('RERANK_ENABLED'), default=True),
         rerank_provider=os.getenv('RERANK_PROVIDER', 'heuristic').strip() or 'heuristic',
         rerank_max_candidates=int(os.getenv('RERANK_MAX_CANDIDATES', '18')),
+        media_cards_enabled=_as_bool(os.getenv('MEDIA_CARDS_ENABLED'), default=True),
+        youtube_card_min_score=float(os.getenv('YOUTUBE_CARD_MIN_SCORE', '0.5')),
+        youtube_segment_max_span_seconds=int(os.getenv('YOUTUBE_SEGMENT_MAX_SPAN_SECONDS', '240')),
         sse_heartbeat_seconds=int(os.getenv('SSE_HEARTBEAT_SECONDS', '10')),
     )

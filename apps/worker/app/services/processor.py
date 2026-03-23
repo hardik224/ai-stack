@@ -10,6 +10,7 @@ from app.library.storage import close_storage_client, download_bytes, init_stora
 from app.services.chunking_service import chunk_parsed_units, chunk_to_dict
 from app.services.csv_processor import parse_csv_bytes
 from app.services.excel_processor import parse_excel_bytes
+from app.services.json_processor import parse_json_bytes
 from app.services.embedding_service import embed_in_batches
 from app.services.indexing_service import upsert_chunk_vectors
 from app.services.pdf_processor import parse_pdf_bytes
@@ -27,6 +28,8 @@ SUPPORTED_CONTENT_TYPES = {
     'application/x-excel': 'excel',
     'application/x-msexcel': 'excel',
     'text/plain': 'txt',
+    'application/json': 'json',
+    'text/json': 'json',
 }
 
 
@@ -110,6 +113,7 @@ def process_job(job_payload: dict) -> None:
             page_count=parsed['page_count'],
             row_count=parsed['row_count'],
             source_type=parsed['source_type'],
+            file_metadata=parsed.get('file_metadata'),
         )
 
         tracker.stage(
@@ -136,6 +140,7 @@ def process_job(job_payload: dict) -> None:
             page_count=parsed['page_count'],
             row_count=parsed['row_count'],
             source_type=parsed['source_type'],
+            file_metadata=parsed.get('file_metadata'),
         )
 
         tracker.stage(
@@ -204,6 +209,7 @@ def process_job(job_payload: dict) -> None:
             row_count=parsed['row_count'],
             source_type=parsed['source_type'],
             completed_at=completed_at,
+            file_metadata=parsed.get('file_metadata'),
         )
         print(json.dumps({'service': 'worker', 'status': 'completed', 'job_id': str(job_id), 'cache_versions': cache_versions}), flush=True)
     except Exception as exc:
@@ -249,6 +255,8 @@ def _parse_file(*, job: dict, content: bytes) -> dict:
         return parse_excel_bytes(content)
     if source_type == 'txt':
         return parse_text_bytes(content)
+    if source_type == 'json':
+        return parse_json_bytes(content)
     raise ValueError(f"Unsupported content type '{job['content_type']}'.")
 
 
