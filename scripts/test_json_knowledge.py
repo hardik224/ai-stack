@@ -40,7 +40,7 @@ class JsonKnowledgeTestRunner(HybridRetrievalTestRunner):
 from pathlib import Path
 from app.services.json_processor import parse_json_bytes
 
-fixture_dir = Path(r'D:\\ews\\ai-stack') / 'scripts' / 'fixtures'
+fixture_dir = Path.cwd() / 'scripts' / 'fixtures'
 youtube = parse_json_bytes((fixture_dir / 'youtube_transcript_sample.json').read_bytes())
 generic = parse_json_bytes((fixture_dir / 'generic_nested_sample.json').read_bytes())
 assert youtube['source_type'] == 'json'
