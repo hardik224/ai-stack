@@ -12,6 +12,7 @@ from urllib.parse import quote
 
 from fastapi import HTTPException, status
 from fastapi.responses import StreamingResponse
+from requests import exceptions as requests_exceptions
 from youtube_transcript_api import YouTubeTranscriptApi
 
 from app.config.settings import get_settings
@@ -93,13 +94,33 @@ def extract_video_id(url: str) -> str:
 
 def fetch_transcript(video_id: str) -> list[dict]:
     api = YouTubeTranscriptApi()
-    transcript_list = api.list(video_id)
-    available_langs = [lang.language_code for lang in transcript_list]
-    if 'en' not in available_langs:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='English transcript is not available for this video.')
+    try:
+        transcript_list = api.list(video_id)
+        available_langs = [lang.language_code for lang in transcript_list]
+        if 'en' not in available_langs:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='English transcript is not available for this video.')
 
-    transcript = api.fetch(video_id, languages=['en', 'hi'])
-    raw_transcript = transcript.to_raw_data()
+        transcript = api.fetch(video_id, languages=['en', 'hi'])
+        raw_transcript = transcript.to_raw_data()
+    except HTTPException:
+        raise
+    except requests_exceptions.RequestException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail='YouTube is not reachable from the API server right now. Please contact the administrator or try again later.',
+        ) from exc
+    except Exception as exc:
+        message = str(exc).strip()
+        lowered = message.lower()
+        if 'transcript' in lowered or 'caption' in lowered or 'subtitles' in lowered:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f'Could not fetch a usable transcript for this video: {message}',
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f'Failed to fetch the YouTube transcript: {message or exc.__class__.__name__}',
+        ) from exc
 
     result = []
     for entry in raw_transcript:
