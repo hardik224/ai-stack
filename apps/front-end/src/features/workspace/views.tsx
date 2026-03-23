@@ -397,6 +397,7 @@ function AssistantView() {
   const streamQueueRef = useRef<string[]>([]);
   const streamIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const assistantMessageIdRef = useRef<string | null>(null);
+  const pendingCompletionRef = useRef<StreamChatEvent | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -484,6 +485,15 @@ function AssistantView() {
     }
   }
 
+  function applyPendingCompletion() {
+    const event = pendingCompletionRef.current;
+    if (!event) return;
+    pendingCompletionRef.current = null;
+    assistantMessageIdRef.current = event.message_id || assistantMessageIdRef.current;
+    setStreamStatus('Answer ready');
+    setMessages((current) => current.map((message) => (message.id === event.message_id || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false, sources: message.sources ?? [], citation_count: message.citation_count ?? 0, metadata: { ...(message.metadata || {}), media_cards: Array.isArray(event.data?.media_cards) ? (event.data?.media_cards as ChatMediaCard[]) : getMessageMediaCards(message) } } : message)));
+  }
+
   function enqueueStreamDelta(delta: string) {
     const pieces: string[] = [];
     let buffer = '';
@@ -501,14 +511,19 @@ function AssistantView() {
   function flushStreamQueue(force = false) {
     if (force) {
       stopStreamAnimation();
-      if (!streamQueueRef.current.length) return;
-      const flushed = streamQueueRef.current.join('');
-      streamQueueRef.current = [];
-      setMessages((current) => current.map((message) => (message.id === assistantMessageIdRef.current ? { ...message, content: `${message.content}${flushed}` } : message)));
+      if (streamQueueRef.current.length) {
+        const flushed = streamQueueRef.current.join('');
+        streamQueueRef.current = [];
+        setMessages((current) => current.map((message) => (message.id === assistantMessageIdRef.current ? { ...message, content: `${message.content}${flushed}` } : message)));
+      }
+      applyPendingCompletion();
       return;
     }
 
     if (streamIntervalRef.current || !streamQueueRef.current.length) {
+      if (!streamQueueRef.current.length) {
+        applyPendingCompletion();
+      }
       return;
     }
 
@@ -516,19 +531,22 @@ function AssistantView() {
       const nextDelta = streamQueueRef.current.shift();
       if (!nextDelta) {
         stopStreamAnimation();
+        applyPendingCompletion();
         return;
       }
       setMessages((current) => current.map((message) => (message.id === assistantMessageIdRef.current ? { ...message, content: `${message.content}${nextDelta}` } : message)));
       if (!streamQueueRef.current.length) {
         stopStreamAnimation();
+        applyPendingCompletion();
       }
-    }, 18);
+    }, 20);
   }
 
   function startNewChat() {
     stopStreamAnimation();
     streamQueueRef.current = [];
     assistantMessageIdRef.current = null;
+    pendingCompletionRef.current = null;
     setIsNewChatDraft(true);
     setSelectedSessionId(null);
     setMessages([]);
@@ -544,6 +562,7 @@ function AssistantView() {
     const userMessageId = `local-user-${Date.now()}`;
     const assistantMessageId = `local-assistant-${Date.now()}`;
     assistantMessageIdRef.current = assistantMessageId;
+    pendingCompletionRef.current = null;
     let nextSessionId = selectedSessionId;
 
     stopStreamAnimation();
@@ -604,10 +623,13 @@ function AssistantView() {
                 setMessages((current) => current.map((message) => (message.id === assistantMessageId || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false, sources: message.sources ?? [], citation_count: message.citation_count ?? 0 } : message)));
                 break;
               case 'generation.completed':
-                flushStreamQueue(true);
-                setStreamStatus('Answer ready');
-                assistantMessageIdRef.current = event.message_id || assistantMessageIdRef.current;
-                setMessages((current) => current.map((message) => (message.id === assistantMessageId || message.id === event.message_id || message.id === assistantMessageIdRef.current ? { ...message, id: event.message_id || message.id, status: 'completed', isTransient: false, sources: message.sources ?? [], citation_count: message.citation_count ?? 0, metadata: { ...(message.metadata || {}), media_cards: Array.isArray(event.data?.media_cards) ? (event.data?.media_cards as ChatMediaCard[]) : getMessageMediaCards(message) } } : message)));
+                pendingCompletionRef.current = event;
+                if (streamQueueRef.current.length) {
+                  setStreamStatus('Finishing answer...');
+                  flushStreamQueue();
+                } else {
+                  applyPendingCompletion();
+                }
                 break;
               case 'error': {
                 const detail = typeof event.data?.detail === 'string' ? event.data.detail : 'The chat request failed.';

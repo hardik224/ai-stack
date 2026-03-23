@@ -573,12 +573,13 @@ def _chat_event_stream(*, payload, current_identity: dict):
                     if not delta:
                         continue
                     answer_parts.append(delta)
-                    yield format_sse_event(
-                        'content.delta',
-                        {'delta': delta},
-                        session_id=str(session_id),
-                        message_id=str(assistant_message_id),
-                    )
+                    for chunk in _chunk_text(delta, chunk_size=48):
+                        yield format_sse_event(
+                            'content.delta',
+                            {'delta': chunk},
+                            session_id=str(session_id),
+                            message_id=str(assistant_message_id),
+                        )
             except Exception as exc:
                 llm_error = str(exc)
                 record_backend_error(
