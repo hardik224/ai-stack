@@ -109,6 +109,8 @@ def retrieve_chunks(
         cached['cache']['retrieval'] = cache_info['retrieval']
         if 'evidence_assessment' not in cached:
             cached['evidence_assessment'] = assess_evidence(cached.get('items', []))
+        if not cached.get('media_suggestions'):
+            cached['media_suggestions'] = media_card_service.choose_media_suggestions(cached.get('items', []), question=expanded_query)
         if persist_trace:
             _persist_retrieval_trace(
                 session_id=session_id,

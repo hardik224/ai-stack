@@ -390,7 +390,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
                 'timings': retrieval['timings'],
                 'citations': citations,
                 'evidence_assessment': evidence_assessment,
-                'media_suggestions': retrieval.get('media_suggestions', []),
+                'media_suggestions': retrieval.get('media_suggestions') or [],
                 'cache': retrieval.get('cache', {}),
             },
             session_id=str(session_id),
@@ -613,7 +613,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
                     )
             generation_ms = round((time.perf_counter() - generation_start) * 1000, 2)
 
-        media_cards = retrieval.get('media_suggestions', []) if generation_mode == 'llm' else []
+        media_cards = (retrieval.get('media_suggestions') or []) if generation_mode == 'llm' else []
         final_content = ''.join(answer_parts).strip()
         total_ms = round((time.perf_counter() - total_start) * 1000, 2)
         timings = {
@@ -699,7 +699,7 @@ def _chat_event_stream(*, payload, current_identity: dict):
 
         yield format_sse_event(
             'citations.completed',
-            {'citations': answer_citations, 'media_cards': media_cards},
+            {'citations': answer_citations, 'media_cards': media_cards or []},
             session_id=str(session_id),
             message_id=str(assistant_message_id),
         )
